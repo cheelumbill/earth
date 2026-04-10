@@ -1,0 +1,3947 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>test</title>
+  <style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+body {
+  font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0d1117 100%);
+  min-height: 100vh;
+  overflow: hidden;
+  color: #e6edf3;
+}
+#canvas-container {
+  width: 100%;
+  height: 100vh;
+  position: relative;
+}
+#bottom-dock {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: rgba(22, 27, 34, 0.92);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(110, 118, 129, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+#city-info {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #58a6ff;
+  transition: color 0.25s ease;
+}
+#visit-count {
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgba(230, 237, 243, 0.45);
+  padding: 6px 12px 10px;
+  border-top: 1px solid rgba(110, 118, 129, 0.2);
+}
+#city-info.empty {
+  color: rgba(230, 237, 243, 0.4);
+  font-weight: 400;
+  font-size: 1rem;
+}
+.hint {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.85rem;
+  color: rgba(230, 237, 243, 0.6);
+  z-index: 5;
+  pointer-events: none;
+}
+.city-label {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  user-select: none;
+}
+#canvas-container .css2d-label {
+  pointer-events: none;
+}
+
+/* —— 列表 / 配置全屏对话框（原 dialog-demo） —— */
+/* 必须在 DOM 中位于 canvas 之后，且 z-index 高于画布，否则会被 WebGL 盖住 */
+.btn-open-dlg {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 100;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  background: rgba(30, 35, 48, 0.92);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+}
+.btn-open-dlg:hover {
+  background: rgba(56, 139, 253, 0.35);
+  border-color: #58a6ff;
+  color: #fff;
+}
+.btn-open-dlg svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+/* 本页演示：其它弹层入口，与列表弹层内 onToolbar* 无关 */
+.dialog-demo-shortcuts {
+  position: fixed;
+  top: max(72px, calc(env(safe-area-inset-top) + 56px));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 99;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  max-width: min(100vw - 32px, 320px);
+  pointer-events: auto;
+}
+.dialog-demo-shortcuts .btn-icon-header {
+  width: 44px;
+  height: 44px;
+}
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+  /* 横屏 / 移动浏览器动态工具栏 */
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+    env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  box-sizing: border-box;
+}
+.dialog-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+/* 列表弹层：浮层容器与 dialog-panel 同级，z-index 高于整块面板（含标题栏）；父级为 fixed，子级 absolute 相对其定位 */
+.list-header-float-host {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  overflow: visible;
+}
+/* 浮层 DOM 移到 host 后已不在 th 下，必须用 host 选择器显式显示（否则一直 opacity:0） */
+.list-header-float-host .list-th-float {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: none;
+}
+.list-header-float-host .list-th-float-panel {
+  pointer-events: auto;
+}
+.dialog-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #161b22;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+/* 列表弹层：标题栏与下方列表区无缝隙 */
+#dlgList .dialog-header {
+  margin-bottom: 0;
+}
+#dlgList .dialog-body.list-body {
+  margin-top: 0;
+  border-top: none;
+}
+.dialog-header {
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px 12px;
+  padding: max(10px, env(safe-area-inset-top, 10px)) 12px 10px;
+  padding-left: max(12px, env(safe-area-inset-left, 12px));
+  padding-right: max(12px, env(safe-area-inset-right, 12px));
+  border-bottom: 1px solid #30363d;
+  background: #21262d;
+}
+/* 左侧：四个工具栏按钮（顺序：左 / 右 / 过滤 / 配置） */
+.dialog-header-toolbar {
+  grid-column: 1;
+  justify-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
+.dialog-header h1 {
+  grid-column: 2;
+  justify-self: center;
+  text-align: center;
+  font-size: clamp(0.95rem, 2.8vw, 1.125rem);
+  font-weight: 600;
+  color: #f0f6fc;
+  min-width: 0;
+  max-width: min(100%, 60vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 右侧：关闭等 */
+.dialog-header-actions {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.btn-icon-header {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #8b949e;
+  cursor: pointer;
+}
+.btn-icon-header:hover {
+  background: #30363d;
+  color: #c9d1d9;
+}
+.btn-icon-header.btn-hl {
+  color: #58a6ff;
+}
+.btn-icon-header.btn-hl:hover {
+  background: rgba(56, 139, 253, 0.15);
+  color: #79b8ff;
+}
+.btn-icon-header.btn-close:hover {
+  background: rgba(248, 81, 73, 0.12);
+  color: #f85149;
+}
+.btn-icon-header svg {
+  width: 24px;
+  height: 24px;
+}
+.btn-icon-header svg.icon-stroke {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.btn-icon-header svg.icon-gear {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* 列表区唯一滚动容器：表头 sticky 必须相对它生效。
+   切勿在 .table-wrap 上设 overflow-x:auto，否则会变成嵌套滚动层，sticky 失效。 */
+.dialog-body.list-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0;
+  padding: 0;
+}
+.dialog-overlay .table-wrap {
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  max-width: 100%;
+  min-width: 0;
+}
+.dialog-overlay .list-body table {
+  width: 100%;
+  min-width: 640px;
+  margin: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: clamp(0.75rem, 2.2vw, 0.875rem);
+  table-layout: auto;
+}
+.dialog-overlay .list-body thead,
+.dialog-overlay .list-body thead tr {
+  overflow: visible;
+}
+.dialog-overlay .list-body th,
+.dialog-overlay .list-body td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid #21262d;
+}
+.dialog-overlay .list-body thead th.list-th-cell {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #21262d;
+  color: #8b949e;
+  font-weight: 600;
+  box-shadow: 0 1px 0 #30363d;
+  vertical-align: bottom;
+}
+.dialog-overlay .list-body tbody td {
+  background: #161b22;
+}
+/* 斑马纹：单行交替 */
+.dialog-overlay .list-body tbody.list-tbody--striped tr:nth-child(odd) td {
+  background: rgba(22, 27, 34, 0.98);
+}
+.dialog-overlay .list-body tbody.list-tbody--striped tr:nth-child(even) td {
+  background: rgba(13, 17, 23, 0.95);
+}
+.dialog-overlay .list-body tbody.list-tbody--striped tr:hover td {
+  background: rgba(56, 139, 253, 0.1) !important;
+}
+.dialog-overlay .list-body th.list-align-left,
+.dialog-overlay .list-body td.list-align-left {
+  text-align: left;
+}
+.dialog-overlay .list-body th.list-align-center,
+.dialog-overlay .list-body td.list-align-center {
+  text-align: center;
+}
+.dialog-overlay .list-body th.list-align-right,
+.dialog-overlay .list-body td.list-align-right {
+  text-align: right;
+}
+.list-th-stack--inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.list-th-cell--inline-btns .list-th-label {
+  cursor: default;
+}
+/* 带浮层的列：与其它表头同高，不因浮层撑开行高 */
+.dialog-overlay .list-body thead th.list-th-cell--float {
+  z-index: 21;
+  overflow: visible;
+  vertical-align: middle;
+}
+/* 锚点：浮层绝对定位，不占文档流高度 */
+.list-th-stack {
+  position: relative;
+  display: block;
+}
+/* 关闭态：占位用 absolute；展开后由 JS 设为 position:fixed + z-index:50，盖过标题栏 */
+.list-th-float {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  margin-bottom: 6px;
+  z-index: 25;
+  width: max-content;
+  max-width: min(200px, calc(100vw - 32px));
+  transform: translateX(-50%) scale(0.96);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    visibility 0.15s;
+}
+/* 展开态显示已由 .list-header-float-host .list-th-float 负责（浮层已挂到 host） */
+/* 浮层卡片：横向两按钮 */
+.list-th-float-panel {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  background: rgba(22, 27, 34, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(88, 166, 255, 0.32);
+  border-radius: 12px;
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 4px 16px rgba(56, 139, 253, 0.15);
+}
+.list-th-cell--float .list-th-label {
+  display: block;
+  position: relative;
+  z-index: 1;
+  padding: 0;
+  line-height: 1.35;
+  text-align: center;
+  color: #c9d1d9;
+  background: transparent;
+  cursor: pointer;
+}
+.list-th-cell:not(.list-th-cell--float) .list-th-label {
+  display: block;
+  line-height: 1.35;
+  color: #c9d1d9;
+}
+.btn-th-float {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(48, 54, 61, 0.95);
+  background: rgba(13, 17, 23, 0.9);
+  color: #58a6ff;
+  cursor: pointer;
+}
+.btn-th-float:hover {
+  background: rgba(48, 54, 61, 0.95);
+  color: #79b8ff;
+  border-color: rgba(88, 166, 255, 0.45);
+}
+.btn-th-float-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.dialog-overlay .list-body tr:hover td {
+  background: rgba(56, 139, 253, 0.06);
+}
+.dialog-overlay .list-body tr:last-child td {
+  border-bottom: none;
+}
+
+.dialog-body.config-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 0;
+}
+.dialog-overlay .config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: #30363d;
+  align-content: start;
+}
+.dialog-overlay .config-grid .config-cell {
+  border-radius: 0;
+  border: none;
+}
+@media (max-width: 720px) {
+  .dialog-overlay .config-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.dialog-overlay .config-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  min-height: 56px;
+}
+.dialog-overlay .config-cell .name {
+  flex: 0 0 38%;
+  min-width: 0;
+  color: #8b949e;
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dialog-overlay .config-cell .value {
+  flex: 1;
+  min-width: 0;
+  color: #f0f6fc;
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dialog-overlay .config-cell .btn-cfg {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  border: 1px solid #30363d;
+  background: #161b22;
+  color: #58a6ff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.dialog-overlay .config-cell .btn-cfg:hover {
+  background: #30363d;
+}
+.dialog-overlay .config-cell .btn-cfg svg.icon-gear,
+.dialog-overlay .config-cell .btn-cfg svg.icon-gear path {
+  fill: #58a6ff;
+  stroke: none;
+}
+.dialog-overlay .config-cell .btn-cfg:hover svg.icon-gear path {
+  fill: #79b8ff;
+}
+.dialog-overlay .config-cell .btn-cfg svg.icon-gear {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+.dialog-overlay .config-cell .btn-cfg svg.icon-stroke {
+  width: 22px;
+  height: 22px;
+  stroke: #58a6ff;
+  fill: none;
+}
+.dialog-overlay .config-cell .btn-cfg:hover svg.icon-stroke {
+  stroke: #79b8ff;
+}
+.dialog-overlay .config-cell .btn-cfg--filter,
+.dialog-overlay .config-cell .btn-cfg--chart,
+.dialog-overlay .config-cell .btn-cfg--list {
+  border-color: #30363d;
+}
+.dialog-overlay .config-cell .config-cell-action-placeholder {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+}
+
+/* 信息详情对话框（全屏，与列表一致） */
+.detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: clamp(10px, 3vw, 16px);
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+}
+.detail-text-box {
+  min-height: min(200px, 35dvh);
+  padding: clamp(12px, 3vw, 16px);
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  font-size: clamp(0.8125rem, 2.5vw, 0.9375rem);
+  line-height: 1.65;
+  color: #e6edf3;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.detail-text-box .c-ok {
+  color: #3fb950;
+}
+.detail-text-box .c-warn {
+  color: #d29922;
+}
+.detail-text-box .c-err {
+  color: #f85149;
+}
+.detail-text-box .c-accent {
+  color: #58a6ff;
+}
+.dialog-footer-btns {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 12px max(12px, env(safe-area-inset-right, 12px))
+    max(14px, env(safe-area-inset-bottom, 14px))
+    max(12px, env(safe-area-inset-left, 12px));
+  border-top: 1px solid #30363d;
+  background: #21262d;
+}
+/* 数值弹层底栏：左侧「重置」，右侧「取消」「确定」同一行 */
+.dialog-footer-btns--numeric {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.dialog-footer-btns-right {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.dialog-footer-btns--numeric .btn-numeric-reset {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-size: 0.8125rem;
+  min-height: 36px;
+  min-width: auto;
+}
+.dialog-footer-btns--numeric .dialog-footer-btns-right .btn-dlg {
+  min-width: min(88px, 28vw);
+  padding: 10px 12px;
+}
+.btn-dlg {
+  min-width: min(96px, 42vw);
+  padding: 10px clamp(12px, 4vw, 18px);
+  border-radius: 8px;
+  font-size: clamp(0.8125rem, 2.4vw, 0.875rem);
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-dlg-secondary {
+  background: #21262d;
+  border-color: #30363d;
+  color: #c9d1d9;
+}
+.btn-dlg-secondary:hover {
+  background: #30363d;
+}
+.btn-dlg-primary {
+  background: #238636;
+  border-color: #2ea043;
+  color: #fff;
+}
+.btn-dlg-primary:hover {
+  background: #2ea043;
+}
+
+/* 报表：固定左右两栏（列表左、图表右），任意宽度不分行 */
+.report-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid #30363d;
+}
+.report-rows {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-right: 1px solid #30363d;
+  background: #161b22;
+}
+.report-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(4.5rem, auto) minmax(3.5rem, auto) auto;
+  gap: clamp(6px, 2vw, 10px);
+  align-items: center;
+  padding: 10px clamp(8px, 2.5vw, 14px);
+  border-bottom: 1px solid #21262d;
+  font-size: clamp(0.75rem, 2.1vw, 0.8125rem);
+}
+.report-row-name {
+  color: #c9d1d9;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.report-row-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #f0f6fc;
+}
+.report-row-delta {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.report-row-delta.up {
+  color: #3fb950;
+}
+.report-row-delta.down {
+  color: #f85149;
+}
+/* 与页面「数据报表」快捷入口一致的图表图标按钮，尺寸适配行高 */
+.report-row .btn-report-row-action {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 0;
+  border-radius: 8px;
+}
+.report-row .btn-report-row-action svg {
+  width: 20px;
+  height: 20px;
+}
+.report-chart-wrap {
+  min-height: 0;
+  min-width: 0;
+  background: #0d1117;
+  padding: clamp(8px, 2vw, 12px);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: hidden;
+  gap: 4px;
+}
+.report-chart-x {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 2px 0;
+  font-size: clamp(0.6875rem, 1.8vw, 0.75rem);
+  color: rgba(230, 237, 243, 0.55);
+  flex-shrink: 0;
+}
+.report-chart-x .report-chart-x-left,
+.report-chart-x .report-chart-x-right {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.report-chart-x-right {
+  text-align: right;
+}
+.report-chart-svg {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  aspect-ratio: 420 / 240;
+  max-width: 100%;
+  flex-shrink: 0;
+  align-self: center;
+}
+.report-chart-svg .grid-line {
+  stroke: #30363d;
+  stroke-width: 1;
+}
+.report-chart-svg .axis {
+  stroke: #484f58;
+  stroke-width: 1.5;
+}
+.report-chart-svg .line-a {
+  fill: none;
+  stroke: #58a6ff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.report-chart-svg .line-b {
+  fill: none;
+  stroke: #a371f7;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.report-chart-svg .legend text {
+  fill: #8b949e;
+  font-size: 11px;
+}
+
+/* —— 数值输入 / 文本输入 全屏对话框 —— */
+.ui-input-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: clamp(12px, 3vw, 20px);
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ui-field-group {
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto;
+}
+.ui-field-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #c9d1d9;
+  margin-bottom: 10px;
+}
+.ui-field-hint {
+  margin-top: 12px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #8b949e;
+}
+.ui-numeric-fields {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+/* 数值弹层：每项一行；可视区只排 4 行（原先约能挤 6 行 → 改为 4 行更高，不是缩小字号） */
+.ui-input-body--numeric {
+  /* 含右侧两行（范围 + 变化率）略增高 */
+  --ui-numeric-row-h: 2.75rem;
+  padding: 10px 14px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+  gap: 0;
+}
+.ui-input-body--numeric .ui-numeric-fields {
+  gap: 0;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: calc(4 * var(--ui-numeric-row-h));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ui-input-body--numeric .ui-numeric-field--row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: none;
+  height: var(--ui-numeric-row-h);
+  min-height: var(--ui-numeric-row-h);
+  max-height: var(--ui-numeric-row-h);
+  padding: 0;
+  border-bottom: 1px solid #21262d;
+  box-sizing: border-box;
+}
+.ui-input-body--numeric .ui-numeric-field--row:last-child {
+  border-bottom: none;
+}
+.ui-input-body--numeric .ui-numeric-field--row .ui-field-label {
+  flex: 0 1 30%;
+  min-width: 0;
+  max-width: 10rem;
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #c9d1d9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-input-body--numeric .ui-numeric-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.ui-input-body--numeric .ui-numeric-row .ui-input-number {
+  flex: 0 0 auto;
+  width: 4rem;
+  min-width: 4rem;
+  max-width: 5rem;
+  padding: 8px 10px;
+  font-size: 1rem;
+  border-radius: 8px;
+}
+.ui-input-body--numeric .ui-numeric-range-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  height: 1.5rem;
+}
+.ui-input-body--numeric .ui-numeric-range-wrap .ui-input-range--numeric {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 10px;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.ui-input-body--numeric .ui-numeric-range-wrap .ui-input-range--numeric::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 5px;
+  background: #30363d;
+}
+.ui-input-body--numeric .ui-numeric-range-wrap .ui-input-range--numeric::-moz-range-track {
+  height: 10px;
+  border-radius: 5px;
+  background: #30363d;
+}
+.ui-input-body--numeric .ui-numeric-range-wrap .ui-input-range--numeric::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: #58a6ff;
+  border: 3px solid #0d1117;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+.ui-input-body--numeric .ui-numeric-range-wrap .ui-input-range--numeric::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #58a6ff;
+  border: 3px solid #0d1117;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+.ui-input-body--numeric .ui-range-origin-mark {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 18px;
+  margin-left: 0;
+  border-radius: 2px;
+  background: rgba(210, 153, 34, 0.95);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 3;
+  box-shadow: 0 0 0 1px rgba(13, 17, 23, 0.9);
+}
+.ui-input-body--numeric .ui-range-origin-mark--high {
+  background: rgba(63, 185, 80, 0.95);
+  z-index: 2;
+}
+.ui-input-body--numeric .ui-numeric-range-nums {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.ui-input-body--numeric .ui-numeric-range-nums .ui-input-number {
+  width: 3.25rem;
+  min-width: 3.25rem;
+  max-width: 3.75rem;
+  padding: 6px 6px;
+  font-size: 0.8125rem;
+}
+.ui-input-body--numeric .ui-numeric-range-dual {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+}
+/* 公共轨道画在底层，两条 input 的 track 全透明，避免上层轨盖住下层拇指 */
+.ui-input-body--numeric .ui-numeric-range-dual::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 10px;
+  border-radius: 5px;
+  background: #30363d;
+  z-index: 0;
+  pointer-events: none;
+}
+.ui-input-body--numeric .ui-numeric-range-dual .ui-input-range--numeric {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 100%;
+  margin: 0;
+  height: 10px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  /* 整轨叠在一起时只有「拇指」接收指针，否则下层滑杆整轨会挡住上界拖动 */
+  pointer-events: none;
+  /* 高于 ::before 公共轨道，两颗拇指都画在轨上方 */
+  z-index: 1;
+}
+.ui-input-body--numeric .ui-numeric-range-dual .js-input-range-high {
+  z-index: 2;
+}
+.ui-input-body--numeric .ui-numeric-range-dual .ui-input-range--numeric::-webkit-slider-thumb {
+  pointer-events: auto;
+  cursor: grab;
+}
+.ui-input-body--numeric .ui-numeric-range-dual .ui-input-range--numeric::-moz-range-thumb {
+  pointer-events: auto;
+  cursor: grab;
+}
+.ui-input-body--numeric .ui-numeric-range-dual .ui-input-range--numeric::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 5px;
+  background: transparent;
+}
+.ui-input-body--numeric .ui-numeric-range-dual .ui-input-range--numeric::-moz-range-track {
+  height: 10px;
+  border-radius: 5px;
+  background: transparent;
+}
+.ui-input-body--numeric .ui-numeric-meta {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  min-width: 3.25rem;
+  max-width: 5rem;
+}
+.ui-input-body--numeric .ui-numeric-meta .ui-field-hint--numeric {
+  margin: 0;
+  padding: 0;
+  font-size: 0.75rem;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: rgba(139, 148, 158, 0.95);
+  white-space: nowrap;
+}
+.ui-input-body--numeric .ui-numeric-delta {
+  font-size: 0.6875rem;
+  line-height: 1.1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ui-input-body--numeric .ui-numeric-delta.is-up {
+  color: #3fb950;
+}
+.ui-input-body--numeric .ui-numeric-delta.is-down {
+  color: #f85149;
+}
+.ui-input-body--numeric .ui-input-number:focus {
+  box-shadow: 0 0 0 3px rgba(56, 139, 253, 0.25);
+}
+@media (max-width: 480px) {
+  .ui-input-body--numeric {
+    --ui-numeric-row-h: 2.5rem;
+    padding: 8px 12px;
+  }
+  .ui-input-body--numeric .ui-numeric-field--row {
+    gap: 8px;
+  }
+  .ui-input-body--numeric .ui-numeric-field--row .ui-field-label {
+    font-size: 0.875rem;
+  }
+  .ui-input-body--numeric .ui-numeric-row .ui-input-number {
+    width: 3.75rem;
+    min-width: 3.75rem;
+    padding: 7px 8px;
+    font-size: 0.9375rem;
+  }
+  .ui-input-body--numeric .ui-numeric-meta .ui-field-hint--numeric {
+    font-size: 0.6875rem;
+  }
+  .ui-input-body--numeric .ui-numeric-delta {
+    font-size: 0.625rem;
+  }
+}
+.ui-numeric-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ui-input-number {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 160px;
+  padding: 12px 14px;
+  font-size: 1.125rem;
+  font-variant-numeric: tabular-nums;
+  color: #f0f6fc;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  outline: none;
+}
+.ui-input-number:focus {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 3px rgba(56, 139, 253, 0.2);
+}
+.ui-range-row {
+  margin-top: 8px;
+  padding: 4px 0;
+}
+.ui-input-range {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: 10px;
+  border-radius: 5px;
+  accent-color: #58a6ff;
+  cursor: pointer;
+}
+.ui-input-range::-webkit-slider-thumb {
+  cursor: pointer;
+}
+.ui-textarea {
+  width: 100%;
+  min-height: min(240px, 40dvh);
+  max-width: 520px;
+  margin: 0 auto;
+  display: block;
+  padding: 14px 16px;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: #e6edf3;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  resize: vertical;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.ui-textarea:focus {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 3px rgba(56, 139, 253, 0.2);
+}
+.ui-textarea::placeholder {
+  color: #6e7681;
+}
+
+  </style>
+</head>
+<body>
+<div class="hint">拖动旋转地球 · 点击城市查看名称</div>
+  <div id="canvas-container"></div>
+  <button type="button" class="btn-open-dlg" id="btnOpenList" title="数据列表" aria-label="打开列表">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h10v2H4v-2z"/></svg>
+  </button>
+  <!-- 仅本页演示用：不在列表弹层内，避免与 callbacks.onToolbar* 混淆 -->
+  <div id="dialog-demo-shortcuts" class="dialog-demo-shortcuts" aria-label="弹层演示入口">
+    <button type="button" class="btn-icon-header btn-hl" id="btnOpenDetailDemo" title="信息详情（演示）" aria-label="信息详情">
+      <svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+    </button>
+    <button type="button" class="btn-icon-header btn-hl" id="btnOpenReportDemo" title="数据报表（演示）" aria-label="数据报表">
+      <svg class="icon-stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M8 17V9m4 8V7m4 10v-4"/></svg>
+    </button>
+    <button type="button" class="btn-icon-header btn-hl" id="btnOpenNumericDemo" title="数值输入（演示）" aria-label="数值输入">
+      <svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 14h4v6H4v-6zm6-4h4v10h-4V10zm6 2h4v8h-4v-8z"/><circle cx="6" cy="8" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="18" cy="10" r="2"/></svg>
+    </button>
+    <button type="button" class="btn-icon-header btn-hl" id="btnOpenTextDemo" title="文本输入（演示）" aria-label="文本输入">
+      <svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h12v2H4v-2z"/><path d="M4 19h10"/></svg>
+    </button>
+    <button type="button" class="btn-icon-header btn-hl" id="btnOpenConfig" title="配置（演示）" aria-label="配置">
+      <svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.06-.7-1.68-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.62.24-1.18.57-1.68.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.06.7 1.68.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.62-.24 1.18-.56 1.68-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+    </button>
+  </div>
+  <div id="bottom-dock">
+    <div id="city-info" class="empty">点击地球上的城市</div>
+    <div id="visit-count" aria-live="polite"></div>
+  </div>
+
+  <div class="dialog-overlay" id="dlgList" data-dialog-kind="list" aria-hidden="true">
+    <div class="dialog-panel" role="dialog" aria-labelledby="listTitle">
+      <header class="dialog-header">
+        <div class="dialog-header-toolbar">
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="left" title="向左" aria-label="向左" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="right" title="向右" aria-label="向右" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="filter" title="过滤" aria-label="过滤" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="config" title="配置" aria-label="配置" hidden style="display:none"><svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.06-.7-1.68-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.62.24-1.18.57-1.68.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.06.7 1.68.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.62-.24 1.18-.56 1.68-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
+        </div>
+        <h1 id="listTitle">数据列表</h1>
+        <div class="dialog-header-actions">
+          <button type="button" class="btn-icon-header btn-close" id="btnCloseList" title="关闭" aria-label="关闭">
+            <svg class="icon-stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="dialog-body list-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>编号</th>
+                <th>名称</th>
+                <th>类型</th>
+                <th>状态</th>
+                <th>更新时间</th>
+              </tr>
+            </thead>
+            <tbody id="listTbody" class="js-list-tbody list-tbody--striped"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <!-- 表头图表浮层挂在此：与 dialog-panel 同级，z-index 高于标题栏 -->
+    <div id="listHeaderFloatHost" class="list-header-float-host" aria-hidden="true"></div>
+  </div>
+
+  <div class="dialog-overlay" id="dlgDetail" data-dialog-kind="msg" aria-hidden="true">
+    <div class="dialog-panel" role="dialog" aria-labelledby="detailTitle">
+      <header class="dialog-header">
+        <div class="dialog-header-toolbar">
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="left" title="向左" aria-label="向左" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="right" title="向右" aria-label="向右" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="filter" title="过滤" aria-label="过滤" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="config" title="配置" aria-label="配置" hidden style="display:none"><svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.06-.7-1.68-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.62.24-1.18.57-1.68.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.06.7 1.68.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.62-.24 1.18-.56 1.68-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
+        </div>
+        <h1 id="detailTitle" class="js-detail-title">信息详情</h1>
+        <div class="dialog-header-actions">
+          <button type="button" class="btn-icon-header btn-close" id="btnCloseDetail" title="关闭" aria-label="关闭">
+            <svg class="icon-stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="dialog-body detail-body">
+        <div class="detail-text-box js-detail-html" id="detailTextBox"></div>
+      </div>
+      <footer class="dialog-footer-btns">
+        <button type="button" class="btn-dlg btn-dlg-secondary js-dialog-cancel" id="btnDetailCancel">取消</button>
+        <button type="button" class="btn-dlg btn-dlg-primary js-dialog-ok" id="btnDetailOk">确定</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="dialog-overlay" id="dlgReport" data-dialog-kind="report" aria-hidden="true">
+    <div class="dialog-panel" role="dialog" aria-labelledby="reportTitle">
+      <header class="dialog-header">
+        <div class="dialog-header-toolbar">
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="left" title="向左" aria-label="向左" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="right" title="向右" aria-label="向右" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="filter" title="过滤" aria-label="过滤" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="config" title="配置" aria-label="配置" hidden style="display:none"><svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.06-.7-1.68-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.62.24-1.18.57-1.68.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.06.7 1.68.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.62-.24 1.18-.56 1.68-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
+        </div>
+        <h1 id="reportTitle">数据报表</h1>
+        <div class="dialog-header-actions">
+          <button type="button" class="btn-icon-header btn-close" id="btnCloseReport" title="关闭" aria-label="关闭">
+            <svg class="icon-stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="dialog-body report-body">
+        <div class="report-rows js-report-rows" id="reportRows"></div>
+        <div class="report-chart-wrap">
+          <svg id="reportChart" class="report-chart-svg js-report-chart" viewBox="0 0 420 240" preserveAspectRatio="xMidYMid meet" aria-label="趋势折线图"></svg>
+          <div class="report-chart-x js-report-x-axis" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dialog-overlay" id="dlgNumeric" data-dialog-kind="numeric" aria-hidden="true">
+    <div class="dialog-panel" role="dialog" aria-labelledby="numericTitle">
+      <header class="dialog-header">
+        <div class="dialog-header-toolbar">
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="left" title="向左" aria-label="向左" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="right" title="向右" aria-label="向右" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="filter" title="过滤" aria-label="过滤" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="config" title="配置" aria-label="配置" hidden style="display:none"><svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.06-.7-1.68-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.62.24-1.18.57-1.68.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.06.7 1.68.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.62-.24 1.18-.56 1.68-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
+        </div>
+        <h1 id="numericTitle">数值输入</h1>
+        <div class="dialog-header-actions">
+          <button type="button" class="btn-icon-header btn-close" id="btnCloseNumeric" title="关闭" aria-label="关闭">
+            <svg class="icon-stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="dialog-body ui-input-body ui-input-body--numeric">
+        <div class="js-numeric-fields ui-numeric-fields" aria-live="polite"></div>
+      </div>
+      <footer class="dialog-footer-btns dialog-footer-btns--numeric">
+        <button type="button" class="btn-dlg btn-dlg-secondary btn-numeric-reset js-numeric-reset">重置</button>
+        <div class="dialog-footer-btns-right">
+          <button type="button" class="btn-dlg btn-dlg-secondary js-dialog-cancel" id="btnNumericCancel">取消</button>
+          <button type="button" class="btn-dlg btn-dlg-primary js-dialog-ok" id="btnNumericOk">确定</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <div class="dialog-overlay" id="dlgTextInput" data-dialog-kind="textInput" aria-hidden="true">
+    <div class="dialog-panel" role="dialog" aria-labelledby="textInputTitle">
+      <header class="dialog-header">
+        <div class="dialog-header-toolbar">
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="left" title="向左" aria-label="向左" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="right" title="向右" aria-label="向右" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="filter" title="过滤" aria-label="过滤" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="config" title="配置" aria-label="配置" hidden style="display:none"><svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.06-.7-1.68-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.62.24-1.18.57-1.68.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.06.7 1.68.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.62-.24 1.18-.56 1.68-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
+        </div>
+        <h1 id="textInputTitle">文本输入</h1>
+        <div class="dialog-header-actions">
+          <button type="button" class="btn-icon-header btn-close" id="btnCloseTextInput" title="关闭" aria-label="关闭">
+            <svg class="icon-stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="dialog-body ui-input-body">
+        <label for="inputTextMain" class="ui-field-label">内容</label>
+        <textarea id="inputTextMain" class="ui-textarea js-input-text" rows="10" placeholder="请输入文本…"></textarea>
+      </div>
+      <footer class="dialog-footer-btns">
+        <button type="button" class="btn-dlg btn-dlg-secondary js-dialog-cancel" id="btnTextInputCancel">取消</button>
+        <button type="button" class="btn-dlg btn-dlg-primary js-dialog-ok" id="btnTextInputOk">确定</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="dialog-overlay" id="dlgConfig" data-dialog-kind="config" aria-hidden="true">
+    <div class="dialog-panel" role="dialog" aria-labelledby="cfgTitle">
+      <header class="dialog-header">
+        <div class="dialog-header-toolbar">
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="left" title="向左" aria-label="向左" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="right" title="向右" aria-label="向右" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="filter" title="过滤" aria-label="过滤" hidden style="display:none"><svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg></button>
+          <button type="button" class="btn-icon-header btn-hl js-dialog-toolbar" data-toolbar="config" title="配置" aria-label="配置" hidden style="display:none"><svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.06-.7-1.68-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.62.24-1.18.57-1.68.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.06.7 1.68.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.62-.24 1.18-.56 1.68-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
+        </div>
+        <h1 id="cfgTitle">系统配置</h1>
+        <div class="dialog-header-actions">
+          <button type="button" class="btn-icon-header btn-close" id="btnCloseConfig" title="关闭" aria-label="关闭">
+            <svg class="icon-stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="dialog-body config-body">
+        <div class="config-grid js-config-grid" id="configGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+
+
+/* --- js/cities100.js --- */
+/** 全球约 100 个主要城市（名称 + 经纬度） */
+const CITIES = [
+  { name: '北京', lat: 39.9042, lon: 116.4074 },
+  { name: '上海', lat: 31.2304, lon: 121.4737 },
+  { name: '广州', lat: 23.1291, lon: 113.2644 },
+  { name: '深圳', lat: 22.5431, lon: 114.0579 },
+  { name: '成都', lat: 30.5728, lon: 104.0668 },
+  { name: '重庆', lat: 29.4316, lon: 106.9123 },
+  { name: '武汉', lat: 30.5928, lon: 114.3055 },
+  { name: '西安', lat: 34.3416, lon: 108.9398 },
+  { name: '南京', lat: 32.0603, lon: 118.7969 },
+  { name: '杭州', lat: 30.2741, lon: 120.1551 },
+  { name: '天津', lat: 39.3434, lon: 117.3616 },
+  { name: '青岛', lat: 36.0671, lon: 120.3826 },
+  { name: '大连', lat: 38.914, lon: 121.6147 },
+  { name: '沈阳', lat: 41.8057, lon: 123.4328 },
+  { name: '哈尔滨', lat: 45.8031, lon: 126.5358 },
+  { name: '昆明', lat: 25.0389, lon: 102.7183 },
+  { name: '香港', lat: 22.3193, lon: 114.1694 },
+  { name: '台北', lat: 25.033, lon: 121.5654 },
+  { name: '东京', lat: 35.6762, lon: 139.6503 },
+  { name: '大阪', lat: 34.6937, lon: 135.5023 },
+  { name: '名古屋', lat: 35.1815, lon: 136.9066 },
+  { name: '福冈', lat: 33.5904, lon: 130.4017 },
+  { name: '首尔', lat: 37.5665, lon: 126.978 },
+  { name: '新加坡', lat: 1.3521, lon: 103.8198 },
+  { name: '曼谷', lat: 13.7563, lon: 100.5018 },
+  { name: '雅加达', lat: -6.2088, lon: 106.8456 },
+  { name: '马尼拉', lat: 14.5995, lon: 120.9842 },
+  { name: '胡志明市', lat: 10.8231, lon: 106.6297 },
+  { name: '吉隆坡', lat: 3.139, lon: 101.6869 },
+  { name: '河内', lat: 21.0285, lon: 105.8542 },
+  { name: '孟买', lat: 19.076, lon: 72.8777 },
+  { name: '德里', lat: 28.6139, lon: 77.209 },
+  { name: '班加罗尔', lat: 12.9716, lon: 77.5946 },
+  { name: '加尔各答', lat: 22.5726, lon: 88.3639 },
+  { name: '金奈', lat: 13.0827, lon: 80.2707 },
+  { name: '达卡', lat: 23.8103, lon: 90.4125 },
+  { name: '卡拉奇', lat: 24.8607, lon: 67.0011 },
+  { name: '拉合尔', lat: 31.5204, lon: 74.3587 },
+  { name: '伊斯坦布尔', lat: 41.0082, lon: 28.9784 },
+  { name: '莫斯科', lat: 55.7558, lon: 37.6173 },
+  { name: '圣彼得堡', lat: 59.9343, lon: 30.3351 },
+  { name: '伦敦', lat: 51.5074, lon: -0.1278 },
+  { name: '巴黎', lat: 48.8566, lon: 2.3522 },
+  { name: '柏林', lat: 52.52, lon: 13.405 },
+  { name: '马德里', lat: 40.4168, lon: -3.7038 },
+  { name: '罗马', lat: 41.9028, lon: 12.4964 },
+  { name: '阿姆斯特丹', lat: 52.3676, lon: 4.9041 },
+  { name: '维也纳', lat: 48.2082, lon: 16.3738 },
+  { name: '华沙', lat: 52.2297, lon: 21.0122 },
+  { name: '斯德哥尔摩', lat: 59.3293, lon: 18.0686 },
+  { name: '哥本哈根', lat: 55.6761, lon: 12.5683 },
+  { name: '都柏林', lat: 53.3498, lon: -6.2603 },
+  { name: '里斯本', lat: 38.7223, lon: -9.1393 },
+  { name: '巴塞罗那', lat: 41.3851, lon: 2.1734 },
+  { name: '慕尼黑', lat: 48.1351, lon: 11.582 },
+  { name: '米兰', lat: 45.4642, lon: 9.19 },
+  { name: '苏黎世', lat: 47.3769, lon: 8.5417 },
+  { name: '布鲁塞尔', lat: 50.8503, lon: 4.3517 },
+  { name: '纽约', lat: 40.7128, lon: -74.006 },
+  { name: '洛杉矶', lat: 34.0522, lon: -118.2437 },
+  { name: '芝加哥', lat: 41.8781, lon: -87.6298 },
+  { name: '休斯敦', lat: 29.7604, lon: -95.3698 },
+  { name: '迈阿密', lat: 25.7617, lon: -80.1918 },
+  { name: '旧金山', lat: 37.7749, lon: -122.4194 },
+  { name: '华盛顿', lat: 38.9072, lon: -77.0369 },
+  { name: '波士顿', lat: 42.3601, lon: -71.0589 },
+  { name: '西雅图', lat: 47.6062, lon: -122.3321 },
+  { name: '费城', lat: 39.9526, lon: -75.1652 },
+  { name: '菲尼克斯', lat: 33.4484, lon: -112.074 },
+  { name: '达拉斯', lat: 32.7767, lon: -96.797 },
+  { name: '亚特兰大', lat: 33.749, lon: -84.388 },
+  { name: '多伦多', lat: 43.6532, lon: -79.3832 },
+  { name: '温哥华', lat: 49.2827, lon: -123.1207 },
+  { name: '蒙特利尔', lat: 45.5017, lon: -73.5673 },
+  { name: '墨西哥城', lat: 19.4326, lon: -99.1332 },
+  { name: '圣保罗', lat: -23.5505, lon: -46.6333 },
+  { name: '里约热内卢', lat: -22.9068, lon: -43.1729 },
+  { name: '布宜诺斯艾利斯', lat: -34.6037, lon: -58.3816 },
+  { name: '利马', lat: -12.0464, lon: -77.0428 },
+  { name: '波哥大', lat: 4.711, lon: -74.0721 },
+  { name: '圣地亚哥(智利)', lat: -33.4489, lon: -70.6693 },
+  { name: '开罗', lat: 30.0444, lon: 31.2357 },
+  { name: '拉各斯', lat: 6.5244, lon: 3.3792 },
+  { name: '约翰内斯堡', lat: -26.2041, lon: 28.0473 },
+  { name: '开普敦', lat: -33.9249, lon: 18.4241 },
+  { name: '内罗毕', lat: -1.2921, lon: 36.8219 },
+  { name: '迪拜', lat: 25.2048, lon: 55.2708 },
+  { name: '利雅得', lat: 24.7136, lon: 46.6753 },
+  { name: '特拉维夫', lat: 32.0853, lon: 34.7818 },
+  { name: '德黑兰', lat: 35.6892, lon: 51.389 },
+  { name: '悉尼', lat: -33.8688, lon: 151.2093 },
+  { name: '墨尔本', lat: -37.8136, lon: 144.9631 },
+  { name: '布里斯班', lat: -27.4698, lon: 153.0251 },
+  { name: '珀斯', lat: -31.9505, lon: 115.8605 },
+  { name: '奥克兰', lat: -36.8485, lon: 174.7633 },
+  { name: '卡萨布兰卡', lat: 33.5731, lon: -7.5898 },
+  { name: '基辅', lat: 50.4501, lon: 30.5234 },
+  { name: '雅典', lat: 37.9838, lon: 23.7275 },
+  { name: '布拉格', lat: 50.0755, lon: 14.4378 },
+  { name: '布达佩斯', lat: 47.4979, lon: 19.0402 }
+];
+
+/* --- js/config.js --- */
+/** 城市、地球与弧线等可调参数（100 城见 cities100.js） */
+export { CITIES };
+
+const GLOBE_RADIUS = 1;
+const ARC_HEIGHT = 0.05;
+/** 每条弧线沿大圆的折线段数（越大越圆滑、顶点越多） */
+const ARC_STEPS = 10;
+const MARKER_RADIUS = 0.02;
+const ARC_COLOR = 0xf59e0b;
+/** 弧线像素线宽（Fat Line） */
+const ARC_LINE_WIDTH_PX = 3;
+const MARKER_COLOR = 0xff6b6b;
+
+const EARTH_TEXTURE_PRIMARY =
+  'https://unpkg.com/three-globe@2.24.3/example/img/earth-day.jpg';
+const EARTH_TEXTURE_FALLBACK =
+  'https://unpkg.com/three-globe@2.24.3/example/img/earth-water.png';
+
+const VISIT_STORAGE_KEY = 'earth_globe_visit_count';
+
+const CAMERA_Z = 2.8;
+const ORBIT_MIN = 1.8;
+const ORBIT_MAX = 5;
+
+/* --- js/geo.js --- */
+function latLonToVector3(lat, lon, radius) {
+  const phi = (90 - lat) * (Math.PI / 180);
+  const theta = (lon + 180) * (Math.PI / 180);
+  const x = -radius * Math.sin(phi) * Math.cos(theta);
+  const y = radius * Math.cos(phi);
+  const z = radius * Math.sin(phi) * Math.sin(theta);
+  return new THREE.Vector3(x, y, z);
+}
+
+function slerpUnit(a, b, t) {
+  const dot = THREE.MathUtils.clamp(a.dot(b), -1, 1);
+  const angle = Math.acos(dot);
+  if (angle < 1e-6) return a.clone();
+  if (angle > Math.PI - 1e-6) return a.clone();
+  const sa = Math.sin(angle);
+  return a
+    .clone()
+    .multiplyScalar(Math.sin((1 - t) * angle) / sa)
+    .add(b.clone().multiplyScalar(Math.sin(t * angle) / sa));
+}
+
+/**
+ * 大圆弧采样点（两端贴球面、中间略隆起），用于 LineSegments
+ * @param steps 每段弧的折线段数，越大越平滑、顶点越多
+ */
+function getArcPoints(A, B, arcHeight = ARC_HEIGHT, steps = 20) {
+  const a = A.clone().normalize();
+  const b = B.clone().normalize();
+  const dot = THREE.MathUtils.clamp(a.dot(b), -1, 1);
+  const angleBetween = Math.acos(dot);
+  const pts = [];
+  const R0 = GLOBE_RADIUS;
+
+  if (dot >= 0) {
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const r = R0 + arcHeight * Math.sin(Math.PI * t);
+      pts.push(slerpUnit(a, b, t).multiplyScalar(r));
+    }
+  } else {
+    const longAngle = 2 * Math.PI - angleBetween;
+    let axis = new THREE.Vector3().crossVectors(a, b);
+    if (axis.length() < 0.01) {
+      axis = new THREE.Vector3().crossVectors(a, new THREE.Vector3(1, 0, 0));
+      if (axis.length() < 0.01) {
+        axis = new THREE.Vector3().crossVectors(a, new THREE.Vector3(0, 1, 0));
+      }
+    }
+    axis.normalize();
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const r = R0 + arcHeight * Math.sin(Math.PI * t);
+      const ang = -t * longAngle;
+      pts.push(a.clone().applyAxisAngle(axis, ang).multiplyScalar(r));
+    }
+  }
+  return pts;
+}
+
+/**
+ * 所有城市对 → 扁平位置数组 [x0,y0,z0, x1,y1,z1, ...]（每 6 个数一条线段），供 LineSegmentsGeometry
+ */
+function buildMergedArcLinePositions(positions, arcHeight, arcSteps) {
+  const pairCount = (positions.length * (positions.length - 1)) / 2;
+  const segPerArc = arcSteps;
+  const floats = pairCount * segPerArc * 6;
+  const arr = new Float32Array(floats);
+  let o = 0;
+  const p = new THREE.Vector3();
+
+  for (let i = 0; i < positions.length; i++) {
+    for (let j = i + 1; j < positions.length; j++) {
+      const pts = getArcPoints(positions[i], positions[j], arcHeight, arcSteps);
+      for (let k = 0; k < pts.length - 1; k++) {
+        p.copy(pts[k]);
+        arr[o++] = p.x;
+        arr[o++] = p.y;
+        arr[o++] = p.z;
+        p.copy(pts[k + 1]);
+        arr[o++] = p.x;
+        arr[o++] = p.y;
+        arr[o++] = p.z;
+      }
+    }
+  }
+
+  return arr;
+}
+
+/* --- js/globe.js --- */
+/**
+ * WebGL 地球 + CSS2D 层 + 轨道控制
+ */
+function createGlobeApp(container) {
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(
+    45,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+  );
+  camera.position.z = CAMERA_Z;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 0);
+  container.appendChild(renderer.domElement);
+
+  const labelRenderer = new CSS2DRenderer();
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.domElement.style.position = 'absolute';
+  labelRenderer.domElement.style.top = '0';
+  labelRenderer.domElement.style.left = '0';
+  labelRenderer.domElement.style.pointerEvents = 'none';
+  container.appendChild(labelRenderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = ORBIT_MIN;
+  controls.maxDistance = ORBIT_MAX;
+  controls.rotateSpeed = 0.5;
+
+  const geometry = new THREE.SphereGeometry(GLOBE_RADIUS, 64, 64);
+  const textureLoader = new THREE.TextureLoader();
+  const earthTexture = textureLoader.load(
+    EARTH_TEXTURE_PRIMARY,
+    undefined,
+    undefined,
+    () => {
+      textureLoader.load(EARTH_TEXTURE_FALLBACK, (tex) => {
+        earthTexture.image = tex.image;
+        earthTexture.needsUpdate = true;
+      });
+    }
+  );
+  const material = new THREE.MeshBasicMaterial({ map: earthTexture });
+  const earth = new THREE.Mesh(geometry, material);
+  scene.add(earth);
+
+  return {
+    scene,
+    camera,
+    renderer,
+    labelRenderer,
+    controls,
+    earth
+  };
+}
+
+function resizeGlobeApp(camera, renderer, labelRenderer) {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+/* --- js/cityLayer.js --- */
+/**
+ * 城市：InstancedMesh；弧线：合并 Fat Line（可调像素线宽）
+ */
+function attachCityLayer(earth, renderer) {
+  const markerGeometry = new THREE.SphereGeometry(MARKER_RADIUS, 12, 12);
+  const markerMaterial = new THREE.MeshBasicMaterial({ color: MARKER_COLOR });
+  const cityPositions = [];
+  const labelRefs = [];
+  const n = CITIES.length;
+
+  CITIES.forEach((city) => {
+    const pos = latLonToVector3(city.lat, city.lon, GLOBE_RADIUS * 1.002);
+    cityPositions.push(pos.clone());
+
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'city-label';
+    labelDiv.textContent = city.name;
+    const labelObj = new CSS2DObject(labelDiv);
+    labelObj.position.set(0, 0, 0);
+    const cityPivot = new THREE.Object3D();
+    cityPivot.position.copy(pos);
+    cityPivot.add(labelObj);
+    earth.add(cityPivot);
+    labelRefs.push({ pivot: cityPivot, element: labelDiv });
+  });
+
+  const matrix = new THREE.Matrix4();
+  const markerInstanced = new THREE.InstancedMesh(
+    markerGeometry,
+    markerMaterial,
+    n
+  );
+  for (let i = 0; i < n; i++) {
+    matrix.setPosition(cityPositions[i]);
+    markerInstanced.setMatrixAt(i, matrix);
+  }
+  markerInstanced.instanceMatrix.needsUpdate = true;
+  markerInstanced.userData.isCityMarkers = true;
+  markerInstanced.userData.cityNames = CITIES.map((c) => c.name);
+  earth.add(markerInstanced);
+
+  const positionsFlat = buildMergedArcLinePositions(
+    cityPositions,
+    ARC_HEIGHT,
+    ARC_STEPS
+  );
+  const lineGeom = new LineSegmentsGeometry();
+  lineGeom.setPositions(positionsFlat);
+
+  const arcLineMaterial = new LineMaterial({
+    color: ARC_COLOR,
+    linewidth: ARC_LINE_WIDTH_PX,
+    worldUnits: false,
+    transparent: true,
+    opacity: 0.9,
+    depthTest: true,
+    resolution: new THREE.Vector2(
+      renderer.domElement.width,
+      renderer.domElement.height
+    )
+  });
+
+  const arcLines = new LineSegments2(lineGeom, arcLineMaterial);
+  earth.add(arcLines);
+
+  return { labelRefs, arcLineMaterial };
+}
+
+/* --- js/interactions.js --- */
+function bindCityPick(container, earth, camera, cityInfoEl) {
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  function onPointerMove(event) {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  }
+
+  function onClick() {
+    raycaster.setFromCamera(mouse, camera);
+    const pickables = [];
+    earth.children.forEach((child) => {
+      if (child.userData && child.userData.isCityMarkers) {
+        pickables.push(child);
+      }
+      if (child.userData && child.userData.cityName) {
+        pickables.push(child);
+      }
+    });
+    const hits = raycaster.intersectObjects(pickables, true);
+    if (hits.length > 0) {
+      const hit = hits[0];
+      const obj = hit.object;
+      let name;
+      if (obj.userData.isCityMarkers && hit.instanceId != null) {
+        name = obj.userData.cityNames[hit.instanceId];
+      } else if (obj.userData.cityName) {
+        name = obj.userData.cityName;
+      }
+      if (name) {
+        cityInfoEl.textContent = name;
+        cityInfoEl.classList.remove('empty');
+      }
+    }
+  }
+
+  container.addEventListener('mousemove', onPointerMove);
+  container.addEventListener('click', onClick);
+}
+
+function updateLabelVisibility(earth, camera, labelRefs) {
+  earth.updateMatrixWorld(true);
+  const cameraDir = new THREE.Vector3().copy(camera.position).normalize();
+  const worldPos = new THREE.Vector3();
+  labelRefs.forEach((ref) => {
+    ref.pivot.getWorldPosition(worldPos);
+    const dot = worldPos.clone().normalize().dot(cameraDir);
+    ref.element.style.visibility = dot > 0 ? 'visible' : 'hidden';
+  });
+}
+
+/* --- js/visitCount.js --- */
+function initVisitCount(element) {
+  let n = parseInt(localStorage.getItem(VISIT_STORAGE_KEY) || '0', 10);
+  if (Number.isNaN(n)) n = 0;
+  n += 1;
+  localStorage.setItem(VISIT_STORAGE_KEY, String(n));
+  element.textContent = '本页已累计打开 ' + n + ' 次';
+}
+
+/* --- js/main.js --- */
+const container = document.getElementById('canvas-container');
+const cityInfoEl = document.getElementById('city-info');
+const visitEl = document.getElementById('visit-count');
+
+initVisitCount(visitEl);
+
+const { scene, camera, renderer, labelRenderer, controls, earth } =
+  createGlobeApp(container);
+const { labelRefs, arcLineMaterial } = attachCityLayer(earth, renderer);
+
+bindCityPick(container, earth, camera, cityInfoEl);
+
+function syncArcLineResolution() {
+  if (arcLineMaterial) {
+    arcLineMaterial.resolution.set(
+      renderer.domElement.width,
+      renderer.domElement.height
+    );
+    arcLineMaterial.needsUpdate = true;
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  updateLabelVisibility(earth, camera, labelRefs);
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  resizeGlobeApp(camera, renderer, labelRenderer);
+  syncArcLineResolution();
+});
+
+  </script>
+  <script>
+/**
+ * 演示/默认数据，供 demo 与 Dialogs.open* 在未传入参数时使用。
+ */
+(function () {
+  function buildListRows() {
+    var listData = [];
+    for (var i = 1; i <= 42; i++) {
+      listData.push({
+        id: 'R-' + String(1000 + i),
+        name: ['Alpha', 'Beta', 'Gamma', 'Delta', '节点'][i % 5] + '-' + i,
+        type: ['采集', '转发', '存储', '计算'][i % 4],
+        status: i % 7 === 0 ? '异常' : '正常',
+        time:
+          '2025-03-' +
+          String(10 + (i % 18)).padStart(2, '0') +
+          ' 14:' +
+          String(i % 60).padStart(2, '0')
+      });
+    }
+    return listData;
+  }
+
+  /** 转为 { values: string[] }，与默认 5 列表头对齐 */
+  function buildListRowsAsValues() {
+    return buildListRows().map(function (r) {
+      return {
+        values: [r.id, r.name, r.type, r.status, r.time]
+      };
+    });
+  }
+
+  /** 演示用表头：第 1、5 列双回调用浮层；单列回调为直接点击 */
+  function listHeadersDemo() {
+    function demoCb(ev) {
+      console.log('[DialogDemoData] 表头操作', ev);
+    }
+    return [
+      { header: '编号', align: 'left', onFilter: demoCb, onSort: demoCb },
+      { header: '名称', align: 'left', onFilter: null, onSort: null },
+      { header: '类型', align: 'center', onFilter: null, onSort: null },
+      { header: '状态', align: 'center', onFilter: null, onSort: null },
+      { header: '更新时间', align: 'right', onFilter: demoCb, onSort: demoCb }
+    ];
+  }
+
+  var cfgRows = [
+    { id: 'cfg-interval', name: '刷新间隔', value: '30 秒', action: 'config' },
+    { id: 'cfg-conn', name: '最大连接数', value: '1024', action: 'filter' },
+    { id: 'cfg-timeout', name: '超时时间', value: '5000 ms', action: 'chart' },
+    { id: 'cfg-log', name: '日志级别', value: 'INFO', action: 'list' },
+    { id: 'cfg-cache', name: '缓存大小', value: '256 MB', action: 'none' },
+    { id: 'cfg-zip', name: '启用压缩', value: '是', action: 'config' },
+    { id: 'cfg-primary', name: '主节点地址', value: '192.168.1.10', action: 'filter' },
+    { id: 'cfg-backup', name: '备节点地址', value: '192.168.1.11', action: 'chart' },
+    { id: 'cfg-api', name: 'API 端口', value: '8443', action: 'list' },
+    { id: 'cfg-theme', name: '主题', value: '深色', action: 'none' },
+    { id: 'cfg-lang', name: '语言', value: 'zh-CN', action: 'config' },
+    { id: 'cfg-tz', name: '时区', value: 'Asia/Shanghai', action: 'filter' },
+    { id: 'cfg-hb', name: '心跳间隔', value: '15 秒', action: 'chart' },
+    { id: 'cfg-retry', name: '重试次数', value: '3', action: 'list' },
+    { id: 'cfg-retain', name: '数据保留天', value: '90', action: 'none' },
+    { id: 'cfg-mail', name: '告警邮箱', value: 'ops@example.com', action: 'config' },
+    { id: 'cfg-sla', name: 'SLA 目标', value: '99.9%', action: 'filter' },
+    { id: 'cfg-maint', name: '维护窗口', value: '周日 02:00', action: 'chart' },
+    { id: 'cfg-channel', name: '版本通道', value: 'stable', action: 'list' },
+    { id: 'cfg-debug', name: '调试模式', value: '否', action: 'none' },
+    { id: 'cfg-sample', name: '采样率', value: '10%', action: 'config' },
+    { id: 'cfg-qps', name: '限流 QPS', value: '5000', action: 'filter' }
+  ];
+
+  var reportSeriesA = [42, 48, 45, 52, 58, 55, 62, 68, 64, 72, 78, 75];
+  var reportSeriesB = [28, 32, 35, 33, 38, 42, 40, 45, 48, 46, 50, 52];
+
+  var reportRows = [
+    { id: 'rep-east-in', name: '华东-入口流量', value: 128400, delta: 3.2 },
+    { id: 'rep-north', name: '华北-计算节点', value: 89620, delta: -1.8 },
+    { id: 'rep-south', name: '华南-存储池', value: 45200, delta: 0.6 },
+    { id: 'rep-sw', name: '西南-边缘网关', value: 32180, delta: -4.1 },
+    { id: 'rep-os', name: '海外-同步链路', value: 18750, delta: 2.4 },
+    { id: 'rep-core', name: '核心-消息队列', value: 99300, delta: 5.7 },
+    { id: 'rep-log', name: '日志-归档吞吐', value: 21400, delta: -0.9 }
+  ];
+
+  /** 数值弹层多字段演示：含单值、区间 type:'range'、defaultValue、renderLabel */
+  function numericFieldsDemo() {
+    return [
+      {
+        id: 'brightness',
+        name: '亮度',
+        value: 80,
+        defaultValue: 60,
+        min: 0,
+        max: 100,
+        step: 1,
+        renderLabel: function (ctx) {
+          if (ctx.kind !== 'single') return '';
+          var d = ctx.current - ctx.defaultValue;
+          if (Math.abs(d) < 0.05) return '';
+          return (d > 0 ? '+' : '') + d.toFixed(0);
+        }
+      },
+      { id: 'volume', name: '音量', value: 45, defaultValue: 50, min: 0, max: 100, step: 1 },
+      { id: 'offset', name: '偏移', value: 0, defaultValue: 0, min: -10, max: 10, step: 0.5 },
+      {
+        id: 'band',
+        name: '区间',
+        type: 'range',
+        value: { low: 20, high: 80 },
+        defaultValue: { low: 10, high: 90 },
+        min: 0,
+        max: 100,
+        step: 1,
+        renderLabel: function (ctx) {
+          if (ctx.kind !== 'range') return '';
+          return '跨度 ' + (ctx.current.high - ctx.current.low).toFixed(0);
+        }
+      }
+    ];
+  }
+
+  var detailHtmlDefault =
+    '<p>当前节点：<span class="c-accent">华东-网关-07</span></p>' +
+    '<p>状态：<span class="c-ok">运行中</span>，上次心跳 <span class="c-warn">2 分钟前</span>。</p>' +
+    '<p>告警：<span class="c-err">磁盘使用率 89%</span>，建议扩容或清理。</p>' +
+    '<p>说明：中间区域支持 <span class="c-accent">HTML</span>，可用 <code>&lt;span class="c-ok"&gt;</code> 等实现彩色文案。</p>';
+
+  window.DialogDemoData = {
+    buildListRows: buildListRows,
+    buildListRowsAsValues: buildListRowsAsValues,
+    listHeadersDemo: listHeadersDemo,
+    detailTitleDefault: '节点详情',
+    cfgRows: cfgRows,
+    reportRows: reportRows,
+    reportSeriesA: reportSeriesA,
+    reportSeriesB: reportSeriesB,
+    reportXAxisStart: '1月',
+    reportXAxisEnd: '12月',
+    detailHtmlDefault: detailHtmlDefault,
+    numericFieldsDemo: numericFieldsDemo
+  };
+})();
+
+/**
+ * 全屏弹层栈：按 id 唯一；同 id 再次打开会置顶；z-index 随栈升高。
+ */
+(function () {
+  var BASE_Z = 1000;
+  var STEP_Z = 10;
+  var stack = [];
+
+  function applyZIndices() {
+    stack.forEach(function (entry, idx) {
+      if (entry.el && entry.el.style) {
+        entry.el.style.zIndex = String(BASE_Z + (idx + 1) * STEP_Z);
+      }
+    });
+  }
+
+  function findIndex(id) {
+    for (var i = 0; i < stack.length; i++) {
+      if (stack[i].id === id) return i;
+    }
+    return -1;
+  }
+
+  function push(entry) {
+    var id = entry.id;
+    if (!id) throw new Error('DialogStack.push: id required');
+    var i = findIndex(id);
+    if (i >= 0) {
+      stack.splice(i, 1);
+    }
+    stack.push(entry);
+    applyZIndices();
+  }
+
+  function bringToTop(id) {
+    var i = findIndex(id);
+    if (i < 0) return false;
+    var entry = stack.splice(i, 1)[0];
+    stack.push(entry);
+    applyZIndices();
+    return true;
+  }
+
+  function remove(id) {
+    var i = findIndex(id);
+    if (i < 0) return null;
+    return stack.splice(i, 1)[0];
+  }
+
+  function get(id) {
+    var i = findIndex(id);
+    return i >= 0 ? stack[i] : null;
+  }
+
+  function snapshot() {
+    return stack.slice();
+  }
+
+  function countKind(kind) {
+    var n = 0;
+    stack.forEach(function (e) {
+      if (e.kind === kind) n += 1;
+    });
+    return n;
+  }
+
+  window.DialogStack = {
+    push: push,
+    bringToTop: bringToTop,
+    remove: remove,
+    get: get,
+    snapshot: snapshot,
+    countKind: countKind,
+    applyZIndices: applyZIndices,
+    BASE_Z: BASE_Z,
+    STEP_Z: STEP_Z
+  };
+})();
+
+/**
+ * 弹层 API：Dialogs.open*(id, …参数, callbacks)；z-index 由 DialogStack 管理。
+ * 依赖：dialogDemoData.js、dialogStack.js
+ */
+(function () {
+  var D = window.DialogDemoData;
+  var DS = window.DialogStack;
+  if (!D || !DS) {
+    console.error('dialogs.js 需要 dialogDemoData.js 与 dialogStack.js');
+    return;
+  }
+
+  var KIND_PROTO = {
+    list: 'dlgList',
+    msg: 'dlgDetail',
+    report: 'dlgReport',
+    config: 'dlgConfig',
+    numeric: 'dlgNumeric',
+    textInput: 'dlgTextInput'
+  };
+
+  var cloneSeq = 0;
+
+  function noop() {}
+
+  function mergeCallbacks(base, extra) {
+    var o = extra || {};
+    var b = base || {};
+    var out = {};
+    var k;
+    for (k in b) {
+      if (Object.prototype.hasOwnProperty.call(b, k)) {
+        out[k] = typeof b[k] === 'function' ? b[k] : noop;
+      }
+    }
+    for (k in o) {
+      if (Object.prototype.hasOwnProperty.call(o, k) && typeof o[k] === 'function') {
+        out[k] = o[k];
+      }
+    }
+    return out;
+  }
+
+  function defaultBaseCallbacks() {
+    return { onClose: noop, onCancel: noop, onConfirm: noop };
+  }
+
+  function uniquifyIds(root, suffix) {
+    var nodes = [root].concat(
+      Array.prototype.slice.call(root.querySelectorAll('[id]'))
+    );
+    nodes.forEach(function (node) {
+      if (node.id) node.id = node.id + suffix;
+    });
+  }
+
+  function resolveOverlayElement(kind) {
+    var protoId = KIND_PROTO[kind];
+    if (!protoId) throw new Error('未知 kind: ' + kind);
+    var proto = document.getElementById(protoId);
+    if (!proto) throw new Error('未找到原型弹层: #' + protoId);
+
+    var n = DS.countKind(kind);
+    if (n === 0) return proto;
+
+    var clone = proto.cloneNode(true);
+    clone.setAttribute('data-dialog-clone', '1');
+    clone.removeAttribute('data-numeric-input-wired');
+    uniquifyIds(clone, '-c' + String(++cloneSeq));
+    document.body.appendChild(clone);
+    return clone;
+  }
+
+  function getEntry(dialogId) {
+    return DS.get(dialogId);
+  }
+
+  function getCb(entry, key) {
+    if (!entry || !entry.callbacks) return noop;
+    var fn = entry.callbacks[key];
+    return typeof fn === 'function' ? fn : noop;
+  }
+
+  /** 根据 callbacks 里是否传入 onToolbar* 同步标题栏四个按钮显隐（内部用） */
+  function syncToolbarButtonsFromCallbacks(overlay, callbacks) {
+    if (!overlay || !callbacks) return;
+    var map = [
+      ['left', 'onToolbarLeft'],
+      ['right', 'onToolbarRight'],
+      ['filter', 'onToolbarFilter'],
+      ['config', 'onToolbarConfig']
+    ];
+    map.forEach(function (t) {
+      var btn = overlay.querySelector(
+        '.js-dialog-toolbar[data-toolbar="' + t[0] + '"]'
+      );
+      if (!btn) return;
+      if (typeof callbacks[t[1]] === 'function') {
+        btn.style.display = '';
+        btn.removeAttribute('hidden');
+      } else {
+        btn.style.display = 'none';
+        btn.setAttribute('hidden', 'hidden');
+      }
+    });
+  }
+
+  function showOverlay(el) {
+    el.classList.add('open');
+    el.setAttribute('aria-hidden', 'false');
+  }
+
+  function hideOverlay(el) {
+    el.classList.remove('open');
+    el.setAttribute('aria-hidden', 'true');
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  var SVG_FLOAT_FILTER_CHART =
+    '<svg class="btn-th-float-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>';
+  var SVG_FLOAT_SORT_CHART =
+    '<svg class="btn-th-float-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16V11"/><path d="M12 16V8"/><path d="M16 16V6"/>' +
+    '<path d="M18 5l2 2-2 2"/></svg>';
+
+  var gearSvg =
+    '<svg class="icon-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.06-.7-1.68-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.62.24-1.18.57-1.68.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.06.7 1.68.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.62-.24 1.18-.56 1.68-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>';
+
+  var svgCfgFilter =
+    '<svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>';
+  var svgCfgChart =
+    '<svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5M4 19h16M8 17V9m4 8V7m4 10v-4"/></svg>';
+  var svgCfgList =
+    '<svg class="icon-stroke" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h10v2H4v-2z"/><path d="M4 19h10"/></svg>';
+
+  function headerText(h) {
+    if (!h) return '';
+    if (h.header != null) return String(h.header);
+    if (h.label != null) return String(h.label);
+    return '';
+  }
+
+  function headerAlignClass(h) {
+    var a = h && h.align ? String(h.align).toLowerCase() : 'left';
+    if (a === 'center' || a === 'right') return 'list-align-' + a;
+    return 'list-align-left';
+  }
+
+  function normalizeRowValues(row, colCount) {
+    if (Array.isArray(row)) {
+      var a = row.map(function (x) {
+        return String(x);
+      });
+      while (a.length < colCount) a.push('');
+      return a.slice(0, colCount);
+    }
+    if (row && Array.isArray(row.values)) {
+      var v = row.values.map(function (x) {
+        return String(x);
+      });
+      while (v.length < colCount) v.push('');
+      return v.slice(0, colCount);
+    }
+    if (row && typeof row === 'object') {
+      return [
+        String(row.id != null ? row.id : ''),
+        String(row.name != null ? row.name : ''),
+        String(row.type != null ? row.type : ''),
+        String(row.status != null ? row.status : ''),
+        String(row.time != null ? row.time : '')
+      ].slice(0, colCount);
+    }
+    return [];
+  }
+
+  function normalizeListRows(rows, colCount) {
+    if (rows == null) return [];
+    if (!Array.isArray(rows)) return [];
+    return rows.map(function (r) {
+      return { values: normalizeRowValues(r, colCount) };
+    });
+  }
+
+  function clearListFloatShellStyles(shell) {
+    if (shell) shell.style.cssText = '';
+  }
+
+  function ensureListHeaderFloatHost(overlay) {
+    if (!overlay) return null;
+    var h = overlay.querySelector('.list-header-float-host');
+    if (h) return h;
+    h = document.createElement('div');
+    h.className = 'list-header-float-host';
+    h.setAttribute('aria-hidden', 'true');
+    overlay.appendChild(h);
+    return h;
+  }
+
+  function getListHeaderFloatHost(overlay) {
+    return (
+      overlay.querySelector('.list-header-float-host') ||
+      ensureListHeaderFloatHost(overlay)
+    );
+  }
+
+  function repatriateListFloatShell(th, shell) {
+    if (!th || !shell) return;
+    var stack = th.querySelector('.list-th-stack');
+    if (!stack) return;
+    if (shell.parentNode !== stack) {
+      stack.insertBefore(shell, stack.firstChild);
+    }
+  }
+
+  function moveListFloatShellToHost(overlay, shell) {
+    var host = getListHeaderFloatHost(overlay);
+    if (!host || !shell) return;
+    host.appendChild(shell);
+    host.setAttribute('aria-hidden', 'false');
+  }
+
+  function overlayBaseZ(overlay) {
+    var z = parseInt(overlay.style.zIndex, 10);
+    if (isNaN(z)) z = DS.BASE_Z;
+    return z;
+  }
+
+  function positionListHeaderFloatShell(overlay, th, shell) {
+    if (!th || !shell) return;
+    var rect = th.getBoundingClientRect();
+    var zb = overlayBaseZ(overlay);
+    shell.style.position = 'fixed';
+    shell.style.zIndex = String(zb + 5);
+    shell.style.left = rect.left + rect.width / 2 + 'px';
+    shell.style.right = 'auto';
+    shell.style.bottom = 'auto';
+    shell.style.margin = '0';
+    shell.style.transform = 'translateX(-50%)';
+    shell.style.width = 'max-content';
+    shell.style.maxWidth = 'min(200px, calc(100vw - 32px))';
+    var pad = 10;
+    shell.style.top = '0px';
+    shell.style.visibility = 'visible';
+    var h = shell.offsetHeight;
+    var gap = 6;
+    var top = rect.top - h - gap;
+    if (top < pad) top = pad;
+    shell.style.top = top + 'px';
+    var shellRect = shell.getBoundingClientRect();
+    var m = 8;
+    if (shellRect.right > window.innerWidth - m) {
+      var delta = window.innerWidth - m - shellRect.right;
+      shell.style.left = rect.left + rect.width / 2 + delta + 'px';
+    }
+    shellRect = shell.getBoundingClientRect();
+    if (shellRect.left < m) {
+      shell.style.left = m + shellRect.width / 2 + 'px';
+    }
+  }
+
+  function closeListHeaderFloatsFor(overlay) {
+    if (!overlay) return;
+    var host = overlay.querySelector('.list-header-float-host');
+    overlay.querySelectorAll('th.list-th-cell--float.is-float-open').forEach(function (th) {
+      var shell =
+        (host && host.querySelector('.list-th-float')) ||
+        th.querySelector('.list-th-float');
+      th.classList.remove('is-float-open');
+      if (shell) {
+        repatriateListFloatShell(th, shell);
+        shell.setAttribute('aria-hidden', 'true');
+        clearListFloatShellStyles(shell);
+      }
+    });
+    if (host) host.setAttribute('aria-hidden', 'true');
+  }
+
+  function openListHeaderFloat(overlay, th) {
+    closeListHeaderFloatsFor(overlay);
+    var shell = th.querySelector('.list-th-float');
+    if (!shell) return;
+    th.classList.add('is-float-open');
+    shell.setAttribute('aria-hidden', 'false');
+    moveListFloatShellToHost(overlay, shell);
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (!th.classList.contains('is-float-open')) return;
+        positionListHeaderFloatShell(overlay, th, shell);
+      });
+    });
+  }
+
+  function repositionOpenListFloats() {
+    document
+      .querySelectorAll('.dialog-overlay[data-dialog-kind="list"].open')
+      .forEach(function (overlay) {
+        var th = overlay.querySelector('th.list-th-cell--float.is-float-open');
+        var host = overlay.querySelector('.list-header-float-host');
+        var shell = host && host.querySelector('.list-th-float');
+        if (th && shell) positionListHeaderFloatShell(overlay, th, shell);
+      });
+  }
+
+  function buildTheadHtml(headers) {
+    if (!headers || !headers.length) {
+      return '<tr><th class="list-th-cell list-align-left" scope="col">—</th></tr>';
+    }
+    var cells = headers
+      .map(function (h, colIdx) {
+        var headerStr = headerText(h);
+        var alignCls = headerAlignClass(h);
+        var hasFilter = h && typeof h.onFilter === 'function';
+        var hasSort = h && typeof h.onSort === 'function';
+        var hasBoth = hasFilter && hasSort;
+        var hasAny = hasFilter || hasSort;
+
+        if (!hasAny) {
+          return (
+            '<th class="list-th-cell ' +
+            alignCls +
+            '" data-col="' +
+            colIdx +
+            '" scope="col"><span class="list-th-label">' +
+            escapeHtml(headerStr) +
+            '</span></th>'
+          );
+        }
+
+        if (hasBoth) {
+          var floatHtml =
+            '<div class="list-th-float" aria-hidden="true">' +
+            '<div class="list-th-float-panel" role="group" aria-label="' +
+            escapeHtml(headerStr) +
+            ' 操作">' +
+            '<button type="button" class="btn-th-float" data-col="' +
+            colIdx +
+            '" data-action="filter" title="筛选" aria-label="筛选">' +
+            SVG_FLOAT_FILTER_CHART +
+            '</button>' +
+            '<button type="button" class="btn-th-float" data-col="' +
+            colIdx +
+            '" data-action="sort" title="排序" aria-label="排序">' +
+            SVG_FLOAT_SORT_CHART +
+            '</button>' +
+            '</div></div>';
+          var inner =
+            '<div class="list-th-stack">' +
+            floatHtml +
+            '<span class="list-th-label">' +
+            escapeHtml(headerStr) +
+            '</span></div>';
+          return (
+            '<th class="list-th-cell list-th-cell--float ' +
+            alignCls +
+            '" data-col="' +
+            colIdx +
+            '" scope="col">' +
+            inner +
+            '</th>'
+          );
+        }
+
+        var singleBtn = hasFilter
+          ? '<button type="button" class="btn-th-float" data-col="' +
+            colIdx +
+            '" data-action="filter" title="筛选" aria-label="筛选">' +
+            SVG_FLOAT_FILTER_CHART +
+            '</button>'
+          : '<button type="button" class="btn-th-float" data-col="' +
+            colIdx +
+            '" data-action="sort" title="排序" aria-label="排序">' +
+            SVG_FLOAT_SORT_CHART +
+            '</button>';
+        var innerSingle =
+          '<div class="list-th-stack list-th-stack--inline">' +
+          singleBtn +
+          '<span class="list-th-label">' +
+          escapeHtml(headerStr) +
+          '</span></div>';
+        return (
+          '<th class="list-th-cell list-th-cell--inline-btns ' +
+          alignCls +
+          '" data-col="' +
+          colIdx +
+          '" scope="col">' +
+          innerSingle +
+          '</th>'
+        );
+      })
+      .join('');
+    return '<tr>' + cells + '</tr>';
+  }
+
+  function renderList(overlay, rows, headers, callbacks) {
+    closeListHeaderFloatsFor(overlay);
+    var headerList = headers && headers.length ? headers : D.listHeadersDemo();
+    var colCount = headerList.length;
+    var listRows = normalizeListRows(rows, colCount);
+    if (!listRows.length && rows == null) {
+      listRows = normalizeListRows(D.buildListRowsAsValues(), colCount);
+    }
+    overlay._dialogListRows = listRows;
+    overlay._listHeaders = headerList;
+
+    var theadEl = overlay.querySelector('table thead');
+    if (theadEl) theadEl.innerHTML = buildTheadHtml(headerList);
+
+    var tbody = overlay.querySelector('.js-list-tbody');
+    if (tbody) {
+      if (!tbody.classList.contains('list-tbody--striped')) {
+        tbody.classList.add('list-tbody--striped');
+      }
+      tbody.innerHTML = listRows
+        .map(function (row, idx) {
+          var vals = row.values || [];
+          var tds = vals
+            .map(function (cell, ci) {
+              var ac = headerAlignClass(headerList[ci] || {});
+              return '<td class="' + ac + '">' + escapeHtml(cell) + '</td>';
+            })
+            .join('');
+          return '<tr data-row-idx="' + idx + '">' + tds + '</tr>';
+        })
+        .join('');
+    }
+  }
+
+  function onDlgListDelegatedClick(e) {
+    var overlay = e.target.closest(
+      '.dialog-overlay[data-dialog-kind="list"][data-dialog-id]'
+    );
+    if (!overlay || !overlay.classList.contains('open')) return;
+    if (!overlay.contains(e.target)) return;
+
+    var dialogId = overlay.getAttribute('data-dialog-id');
+    var entry = getEntry(dialogId);
+    var cb = entry && entry.callbacks ? entry.callbacks : {};
+
+    var headers = overlay._listHeaders || D.listHeadersDemo();
+
+    var btnFloat = e.target.closest('.btn-th-float');
+    if (btnFloat && overlay.contains(btnFloat)) {
+      e.stopPropagation();
+      var c = parseInt(btnFloat.getAttribute('data-col'), 10);
+      var action = btnFloat.getAttribute('data-action');
+      var h = headers[c];
+      var payload = { col: c, header: headerText(h) };
+      if (action === 'filter' && h && typeof h.onFilter === 'function') {
+        h.onFilter(payload);
+      } else if (action === 'sort' && h && typeof h.onSort === 'function') {
+        h.onSort(payload);
+      }
+      closeListHeaderFloatsFor(overlay);
+      return;
+    }
+
+    if (e.target.closest('.list-th-float-panel')) return;
+
+    var thF = e.target.closest('th.list-th-cell--float');
+    if (thF) {
+      var wasOpen = thF.classList.contains('is-float-open');
+      closeListHeaderFloatsFor(overlay);
+      if (!wasOpen) openListHeaderFloat(overlay, thF);
+      return;
+    }
+
+    var thInline = e.target.closest('th.list-th-cell--inline-btns');
+    if (thInline && !e.target.closest('.btn-th-float')) {
+      closeListHeaderFloatsFor(overlay);
+      var colI = parseInt(thInline.getAttribute('data-col'), 10);
+      var hi = headers[colI];
+      if (typeof cb.onHeaderClick === 'function') {
+        cb.onHeaderClick({ col: colI, header: headerText(hi) });
+      }
+      return;
+    }
+
+    var th = e.target.closest('th.list-th-cell');
+    if (th) {
+      closeListHeaderFloatsFor(overlay);
+      var col = parseInt(th.getAttribute('data-col'), 10);
+      var hh = headers[col];
+      if (typeof cb.onHeaderClick === 'function') {
+        cb.onHeaderClick({ col: col, header: headerText(hh) });
+      }
+      return;
+    }
+
+    var tr = e.target.closest('tbody tr[data-row-idx]');
+    if (tr) {
+      closeListHeaderFloatsFor(overlay);
+      var idx = parseInt(tr.getAttribute('data-row-idx'), 10);
+      var row = (overlay._dialogListRows || [])[idx];
+      if (row && typeof cb.onRowClick === 'function') {
+        cb.onRowClick({ row: row, index: idx });
+      }
+      return;
+    }
+
+    closeListHeaderFloatsFor(overlay);
+  }
+
+  var listDelegationBound = false;
+  function initListGlobalListenersOnce() {
+    if (listDelegationBound) return;
+    listDelegationBound = true;
+    document.addEventListener('click', onDlgListDelegatedClick);
+    window.addEventListener('resize', repositionOpenListFloats);
+  }
+
+  function attachListBodyScroll(overlay) {
+    var lb = overlay.querySelector('.list-body');
+    if (!lb || lb.dataset.dialogScrollBound === '1') return;
+    lb.dataset.dialogScrollBound = '1';
+    lb.addEventListener('scroll', repositionOpenListFloats, { passive: true });
+  }
+
+  function normalizeConfigAction(act) {
+    if (act == null || act === '') return 'none';
+    var a = String(act).toLowerCase();
+    if (a === 'none' || a === 'config' || a === 'filter' || a === 'chart' || a === 'list') {
+      return a;
+    }
+    return 'config';
+  }
+
+  function configActionButtonHtml(item, idx) {
+    var act = normalizeConfigAction(item.action);
+    var id = item.id != null ? String(item.id) : 'cfg-' + idx;
+    if (act === 'none') {
+      return '<span class="config-cell-action-placeholder" aria-hidden="true"></span>';
+    }
+    var titleMap = {
+      config: '配置',
+      filter: '过滤',
+      chart: '图表',
+      list: '列表'
+    };
+    var title = titleMap[act] || '操作';
+    var cls = 'btn-cfg btn-cfg--' + act;
+    var inner =
+      act === 'config'
+        ? gearSvg
+        : act === 'filter'
+          ? svgCfgFilter
+          : act === 'chart'
+            ? svgCfgChart
+            : svgCfgList;
+    return (
+      '<button type="button" class="' +
+      cls +
+      '" data-idx="' +
+      idx +
+      '" data-id="' +
+      escapeHtml(id) +
+      '" title="' +
+      title +
+      '" aria-label="' +
+      title +
+      '">' +
+      inner +
+      '</button>'
+    );
+  }
+
+  function renderConfig(overlay, rows, callbacks) {
+    var list = rows && rows.length ? rows : D.cfgRows;
+    var grid = overlay.querySelector('.js-config-grid');
+    if (!grid) return;
+    grid.innerHTML = list
+      .map(function (item, idx) {
+        return (
+          '<div class="config-cell">' +
+          '<span class="name" title="' +
+          escapeHtml(item.name) +
+          '">' +
+          escapeHtml(item.name) +
+          '</span>' +
+          '<span class="value" title="' +
+          escapeHtml(item.value) +
+          '">' +
+          escapeHtml(item.value) +
+          '</span>' +
+          configActionButtonHtml(item, idx) +
+          '</div>'
+        );
+      })
+      .join('');
+    grid.querySelectorAll('.btn-cfg').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var i = parseInt(btn.getAttribute('data-idx'), 10);
+        var cid = btn.getAttribute('data-id') || '';
+        var it = list[i];
+        if (it && typeof callbacks.onConfigItem === 'function') {
+          callbacks.onConfigItem({ id: cid, item: it, index: i });
+        }
+      });
+    });
+  }
+
+  function reportRowId(r, i) {
+    if (r && r.id != null) return String(r.id);
+    return 'report-row-' + i;
+  }
+
+  function renderReportRows(overlay, rows, callbacks) {
+    var host = overlay.querySelector('.js-report-rows');
+    if (!host) return;
+    host.innerHTML = rows
+      .map(function (r, i) {
+        var rid = reportRowId(r, i);
+        var up = r.delta >= 0;
+        var deltaStr = (up ? '+' : '') + r.delta.toFixed(1) + '%';
+        var cls = up ? 'report-row-delta up' : 'report-row-delta down';
+        return (
+          '<div class="report-row" data-row-id="' +
+          escapeHtml(rid) +
+          '">' +
+          '<span class="report-row-name" title="' +
+          escapeHtml(r.name) +
+          '">' +
+          escapeHtml(r.name) +
+          '</span>' +
+          '<span class="report-row-num">' +
+          escapeHtml(String(r.value.toLocaleString('zh-CN'))) +
+          '</span>' +
+          '<span class="' +
+          cls +
+          '">' +
+          escapeHtml(deltaStr) +
+          '</span>' +
+          '<button type="button" class="btn-icon-header btn-hl btn-report-row-action" title="操作" aria-label="操作" data-ridx="' +
+          i +
+          '" data-row-id="' +
+          escapeHtml(rid) +
+          '"><svg class="icon-stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M8 17V9m4 8V7m4 10v-4"/></svg></button>' +
+          '</div>'
+        );
+      })
+      .join('');
+    host.querySelectorAll('.btn-report-row-action').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var i = parseInt(btn.getAttribute('data-ridx'), 10);
+        var rid = btn.getAttribute('data-row-id') || '';
+        var r = rows[i];
+        if (typeof callbacks.onReportRowAction === 'function') {
+          callbacks.onReportRowAction({ id: rid, row: r, index: i });
+        }
+      });
+    });
+  }
+
+  function setReportXAxisLabels(overlay, left, right) {
+    var el = overlay.querySelector('.js-report-x-axis');
+    if (!el) return;
+    var L = left != null ? String(left) : '';
+    var R = right != null ? String(right) : '';
+    el.innerHTML =
+      '<span class="report-chart-x-left">' +
+      escapeHtml(L) +
+      '</span><span class="report-chart-x-right">' +
+      escapeHtml(R) +
+      '</span>';
+  }
+
+  function drawReportChart(overlay, seriesA, seriesB, xAxisStart, xAxisEnd) {
+    var svg = overlay.querySelector('.js-report-chart');
+    if (!svg) return;
+    var W = 420;
+    var H = 240;
+    var padL = 44;
+    var padR = 16;
+    var padT = 28;
+    var padB = 36;
+    var gw = W - padL - padR;
+    var gh = H - padT - padB;
+    var all = seriesA.concat(seriesB);
+    var minV = Math.min.apply(null, all);
+    var maxV = Math.max.apply(null, all);
+    var padY = (maxV - minV) * 0.12 || 4;
+    minV -= padY;
+    maxV += padY;
+    function xAt(i, n) {
+      return padL + (gw * i) / (n - 1);
+    }
+    function yAt(v) {
+      return padT + gh * (1 - (v - minV) / (maxV - minV || 1));
+    }
+    var n = seriesA.length;
+    var pathA = seriesA
+      .map(function (v, i) {
+        return (i === 0 ? 'M' : 'L') + xAt(i, n).toFixed(1) + ' ' + yAt(v).toFixed(1);
+      })
+      .join(' ');
+    var pathB = seriesB
+      .map(function (v, i) {
+        return (i === 0 ? 'M' : 'L') + xAt(i, n).toFixed(1) + ' ' + yAt(v).toFixed(1);
+      })
+      .join('');
+
+    var parts = [];
+    parts.push(
+      '<line class="axis" x1="' +
+        padL +
+        '" y1="' +
+        (H - padB) +
+        '" x2="' +
+        (W - padR) +
+        '" y2="' +
+        (H - padB) +
+        '"/>'
+    );
+    parts.push(
+      '<line class="axis" x1="' +
+        padL +
+        '" y1="' +
+        padT +
+        '" x2="' +
+        padL +
+        '" y2="' +
+        (H - padB) +
+        '"/>'
+    );
+    for (var g = 0; g <= 4; g++) {
+      var yy = padT + (gh * g) / 4;
+      parts.push(
+        '<line class="grid-line" x1="' +
+          padL +
+          '" y1="' +
+          yy +
+          '" x2="' +
+          (W - padR) +
+          '" y2="' +
+          yy +
+          '"/>'
+      );
+    }
+    parts.push('<path class="line-a" d="' + pathA + '"/>');
+    parts.push('<path class="line-b" d="' + pathB + '"/>');
+    parts.push(
+      '<g class="legend" transform="translate(' +
+        (padL + 4) +
+        ',' +
+        12 +
+        ')">' +
+        '<line x1="0" y1="0" x2="18" y2="0" class="line-a" stroke-width="3"/>' +
+        '<text x="24" y="4">系列 A</text>' +
+        '<line x1="100" y1="0" x2="118" y2="0" class="line-b" stroke-width="3"/>' +
+        '<text x="124" y="4">系列 B</text>' +
+        '</g>'
+    );
+    svg.innerHTML = parts.join('');
+    var xs =
+      xAxisStart !== undefined && xAxisStart !== null
+        ? xAxisStart
+        : D.reportXAxisStart;
+    var xe =
+      xAxisEnd !== undefined && xAxisEnd !== null ? xAxisEnd : D.reportXAxisEnd;
+    setReportXAxisLabels(overlay, xs, xe);
+    overlay.setAttribute('data-report-x-start', String(xs));
+    overlay.setAttribute('data-report-x-end', String(xe));
+  }
+
+  /**
+   * 仅重绘指定 id 报表弹层右侧折线图与横轴文字；左侧行列表与滚动位置不变。
+   * 若栈中无该 id 或类型不是 report，则无操作。
+   * seriesA / seriesB 须为与当前点数一致的长度；横轴起止省略时沿用该弹层上次绘制时的标签。
+   */
+  function updateReportChart(id, seriesA, seriesB, xAxisStart, xAxisEnd) {
+    if (id == null || id === '') return;
+    var entry = DS.get(String(id));
+    if (!entry || entry.kind !== 'report' || !entry.el) return;
+    if (!Array.isArray(seriesA) || !Array.isArray(seriesB)) return;
+    var ov = entry.el;
+    var xa =
+      xAxisStart !== undefined && xAxisStart !== null
+        ? xAxisStart
+        : ov.getAttribute('data-report-x-start');
+    var xe =
+      xAxisEnd !== undefined && xAxisEnd !== null
+        ? xAxisEnd
+        : ov.getAttribute('data-report-x-end');
+    drawReportChart(ov, seriesA, seriesB, xa, xe);
+  }
+
+  function clampInRange(v, min, max) {
+    var n = typeof v === 'number' ? v : parseFloat(String(v), 10);
+    if (isNaN(n)) n = min;
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function findNumericSingleElements(fieldsRoot, fid) {
+    if (!fieldsRoot || !fid) return { num: null, rng: null };
+    var nums = fieldsRoot.querySelectorAll('.js-input-numeric');
+    var rngs = fieldsRoot.querySelectorAll('.js-input-numeric-range');
+    var num = null;
+    var rng = null;
+    var i;
+    for (i = 0; i < nums.length; i++) {
+      if (
+        nums[i].getAttribute('data-field-id') === fid &&
+        !nums[i].getAttribute('data-range-part')
+      ) {
+        num = nums[i];
+        break;
+      }
+    }
+    for (i = 0; i < rngs.length; i++) {
+      if (
+        rngs[i].getAttribute('data-field-id') === fid &&
+        !rngs[i].getAttribute('data-range-part')
+      ) {
+        rng = rngs[i];
+        break;
+      }
+    }
+    return { num: num, rng: rng };
+  }
+
+  function findRangeElements(fieldsRoot, fid) {
+    if (!fieldsRoot || !fid) {
+      return {
+        lowNum: null,
+        highNum: null,
+        lowRng: null,
+        highRng: null
+      };
+    }
+    var nums = fieldsRoot.querySelectorAll('.js-input-numeric');
+    var rngs = fieldsRoot.querySelectorAll('.js-input-numeric-range');
+    var lowNum = null;
+    var highNum = null;
+    var lowRng = null;
+    var highRng = null;
+    var i;
+    for (i = 0; i < nums.length; i++) {
+      if (nums[i].getAttribute('data-field-id') !== fid) continue;
+      if (nums[i].getAttribute('data-range-part') === 'low') lowNum = nums[i];
+      if (nums[i].getAttribute('data-range-part') === 'high') highNum = nums[i];
+    }
+    for (i = 0; i < rngs.length; i++) {
+      if (rngs[i].getAttribute('data-field-id') !== fid) continue;
+      if (rngs[i].getAttribute('data-range-part') === 'low') lowRng = rngs[i];
+      if (rngs[i].getAttribute('data-range-part') === 'high') highRng = rngs[i];
+    }
+    return { lowNum: lowNum, highNum: highNum, lowRng: lowRng, highRng: highRng };
+  }
+
+  function pctInSpan(v, mn, mx) {
+    var span = mx - mn;
+    if (span <= 0) return 50;
+    return Math.max(0, Math.min(100, ((v - mn) / span) * 100));
+  }
+
+  function normalizeNumericField(f, i) {
+    var id =
+      f && f.id != null && String(f.id).length
+        ? String(f.id)
+        : 'field-' + i;
+    var name = f && f.name != null ? String(f.name) : id;
+    var mn = f && f.min != null && !isNaN(Number(f.min)) ? Number(f.min) : 0;
+    var mx = f && f.max != null && !isNaN(Number(f.max)) ? Number(f.max) : 100;
+    if (isNaN(mn)) mn = 0;
+    if (isNaN(mx)) mx = 100;
+    if (mx < mn) {
+      var t = mx;
+      mx = mn;
+      mn = t;
+    }
+    var step = f && f.step != null && !isNaN(Number(f.step)) ? Number(f.step) : 1;
+    if (step <= 0) step = 1;
+    var renderLabel = typeof f.renderLabel === 'function' ? f.renderLabel : null;
+    var isRange = f && f.type === 'range';
+
+    if (isRange) {
+      var low;
+      var high;
+      if (f.value != null && typeof f.value === 'object') {
+        low = Number(f.value.low);
+        high = Number(f.value.high);
+      } else {
+        low = mn + (mx - mn) * 0.25;
+        high = mn + (mx - mn) * 0.75;
+      }
+      if (isNaN(low)) low = mn + (mx - mn) * 0.25;
+      if (isNaN(high)) high = mn + (mx - mn) * 0.75;
+      low = clampInRange(low, mn, mx);
+      high = clampInRange(high, mn, mx);
+      if (low > high) {
+        var s = low;
+        low = high;
+        high = s;
+      }
+      var dLow = low;
+      var dHigh = high;
+      if (f.defaultValue != null && typeof f.defaultValue === 'object') {
+        dLow = clampInRange(Number(f.defaultValue.low), mn, mx);
+        dHigh = clampInRange(Number(f.defaultValue.high), mn, mx);
+        if (isNaN(dLow)) dLow = low;
+        if (isNaN(dHigh)) dHigh = high;
+      }
+      if (dLow > dHigh) {
+        var s2 = dLow;
+        dLow = dHigh;
+        dHigh = s2;
+      }
+      return {
+        id: id,
+        name: name,
+        fieldKind: 'range',
+        min: mn,
+        max: mx,
+        step: step,
+        value: { low: low, high: high },
+        defaultValue: { low: dLow, high: dHigh },
+        renderLabel: renderLabel
+      };
+    }
+
+    var defVal = (mn + mx) / 2;
+    var val =
+      f && f.value != null && !isNaN(Number(f.value)) ? Number(f.value) : defVal;
+    val = clampInRange(val, mn, mx);
+    var defDV = val;
+    if (f && f.defaultValue != null && !isNaN(Number(f.defaultValue))) {
+      defDV = clampInRange(Number(f.defaultValue), mn, mx);
+    }
+    return {
+      id: id,
+      name: name,
+      fieldKind: 'single',
+      min: mn,
+      max: mx,
+      step: step,
+      value: val,
+      defaultValue: defDV,
+      renderLabel: renderLabel
+    };
+  }
+
+  function buildNumericRenderers(fieldsNorm) {
+    var o = {};
+    fieldsNorm.forEach(function (f) {
+      if (typeof f.renderLabel === 'function') {
+        o[f.id] = f.renderLabel;
+      }
+    });
+    return o;
+  }
+
+  function numStepAttr(step) {
+    if (step % 1 === 0) return String(step);
+    return String(step);
+  }
+
+  function updateNumericLabels(fieldsRoot, overlay) {
+    if (!fieldsRoot || !overlay) return;
+    var dlgId = overlay.getAttribute('data-dialog-id');
+    var entry = dlgId ? DS.get(dlgId) : null;
+    var fns = entry && entry.numericRenderers ? entry.numericRenderers : {};
+    var nodes = fieldsRoot.querySelectorAll('.js-numeric-delta');
+    Array.prototype.forEach.call(nodes, function (el) {
+      var fid = el.getAttribute('data-field-id');
+      if (!fid) return;
+      var fn = fns[fid];
+      if (typeof fn !== 'function') {
+        el.textContent = '';
+        el.hidden = true;
+        el.removeAttribute('title');
+        return;
+      }
+      var row = el.closest('.ui-numeric-field--row');
+      if (!row) return;
+      var fk = row.getAttribute('data-field-kind') || 'single';
+      var mn = parseFloat(row.getAttribute('data-min'), 10);
+      var mx = parseFloat(row.getAttribute('data-max'), 10);
+      if (isNaN(mn)) mn = 0;
+      if (isNaN(mx)) mx = 100;
+      var ctx = {
+        dialogId: dlgId,
+        fieldId: fid,
+        kind: fk === 'range' ? 'range' : 'single',
+        min: mn,
+        max: mx
+      };
+      if (fk === 'range') {
+        var R = findRangeElements(fieldsRoot, fid);
+        if (!R.lowNum || !R.highNum) return;
+        ctx.current = {
+          low: parseFloat(String(R.lowNum.value), 10),
+          high: parseFloat(String(R.highNum.value), 10)
+        };
+        ctx.defaultValue = {
+          low: parseFloat(String(R.lowNum.getAttribute('data-default-value')), 10),
+          high: parseFloat(String(R.highNum.getAttribute('data-default-value')), 10)
+        };
+      } else {
+        var S = findNumericSingleElements(fieldsRoot, fid);
+        if (!S.num) return;
+        ctx.current = parseFloat(String(S.num.value), 10);
+        ctx.defaultValue = parseFloat(
+          String(S.num.getAttribute('data-default-value')),
+          10
+        );
+      }
+      var text;
+      try {
+        text = fn(ctx);
+      } catch (err) {
+        console.warn('renderLabel', fid, err);
+        text = '';
+      }
+      text = text == null || text === '' ? '' : String(text);
+      el.textContent = text;
+      el.hidden = !text;
+      el.classList.remove('is-up', 'is-down');
+      if (text) {
+        el.setAttribute('title', text);
+      } else {
+        el.removeAttribute('title');
+      }
+    });
+  }
+
+  function syncRangeInputs(fields, fid) {
+    var R = findRangeElements(fields, fid);
+    if (!R.lowNum || !R.highNum || !R.lowRng || !R.highRng) return;
+    var mn = parseFloat(R.lowNum.getAttribute('min'), 10);
+    var mx = parseFloat(R.lowNum.getAttribute('max'), 10);
+    if (isNaN(mn)) mn = 0;
+    if (isNaN(mx)) mx = 100;
+    var low = clampInRange(parseFloat(String(R.lowNum.value), 10), mn, mx);
+    var high = clampInRange(parseFloat(String(R.highNum.value), 10), mn, mx);
+    if (low > high) {
+      low = high;
+    }
+    R.lowNum.value = String(low);
+    R.highNum.value = String(high);
+    R.lowRng.value = String(low);
+    R.highRng.value = String(high);
+  }
+
+  function renderNumericFields(overlay, fields) {
+    var host = overlay.querySelector('.js-numeric-fields');
+    if (!host) return;
+    host.innerHTML = fields
+      .map(function (f, idx) {
+        var fid = escapeHtml(f.id);
+        var name = escapeHtml(f.name);
+        var mn = f.min;
+        var mx = f.max;
+        var st = numStepAttr(f.step);
+        var lid = 'nf-' + idx;
+        var span = mx - mn;
+        var metaHint =
+          '<span class="ui-field-hint ui-field-hint--numeric" title="允许范围">' +
+          mn +
+          '–' +
+          mx +
+          '</span>' +
+          '<span class="ui-numeric-delta js-numeric-delta" data-field-id="' +
+          fid +
+          '" hidden></span>';
+
+        if (f.fieldKind === 'range') {
+          var low = f.value.low;
+          var high = f.value.high;
+          var dl = f.defaultValue.low;
+          var dh = f.defaultValue.high;
+          var ivl = String(low);
+          var ivh = String(high);
+          var pctl = pctInSpan(dl, mn, mx);
+          var pcth = pctInSpan(dh, mn, mx);
+          return (
+            '<div class="ui-field-group ui-numeric-field ui-numeric-field--row ui-numeric-field--range" data-field-kind="range" data-min="' +
+            mn +
+            '" data-max="' +
+            mx +
+            '">' +
+            '<label class="ui-field-label" for="' +
+            lid +
+            '-lo">' +
+            name +
+            '</label>' +
+            '<div class="ui-numeric-row">' +
+            '<div class="ui-numeric-range-nums">' +
+            '<input type="number" id="' +
+            lid +
+            '-lo" class="ui-input-number js-input-numeric" data-field-id="' +
+            fid +
+            '" data-range-part="low" data-default-value="' +
+            escapeHtml(String(dl)) +
+            '" min="' +
+            mn +
+            '" max="' +
+            mx +
+            '" step="' +
+            st +
+            '" value="' +
+            escapeHtml(ivl) +
+            '" inputmode="decimal" />' +
+            '<input type="number" id="' +
+            lid +
+            '-hi" class="ui-input-number js-input-numeric" data-field-id="' +
+            fid +
+            '" data-range-part="high" data-default-value="' +
+            escapeHtml(String(dh)) +
+            '" min="' +
+            mn +
+            '" max="' +
+            mx +
+            '" step="' +
+            st +
+            '" value="' +
+            escapeHtml(ivh) +
+            '" inputmode="decimal" />' +
+            '</div>' +
+            '<div class="ui-numeric-range-wrap ui-numeric-range-dual">' +
+            '<input type="range" class="ui-input-range ui-input-range--numeric js-input-numeric-range js-input-range-high" data-field-id="' +
+            fid +
+            '" data-range-part="high" min="' +
+            mn +
+            '" max="' +
+            mx +
+            '" step="' +
+            st +
+            '" value="' +
+            escapeHtml(ivh) +
+            '" aria-label="' +
+            name +
+            '（上界）" />' +
+            '<input type="range" class="ui-input-range ui-input-range--numeric js-input-numeric-range js-input-range-low" data-field-id="' +
+            fid +
+            '" data-range-part="low" min="' +
+            mn +
+            '" max="' +
+            mx +
+            '" step="' +
+            st +
+            '" value="' +
+            escapeHtml(ivl) +
+            '" aria-label="' +
+            name +
+            '（下界）" />' +
+            '<span class="ui-range-origin-mark" style="left:' +
+            pctl.toFixed(2) +
+            '%" title="默认下界" aria-hidden="true"></span>' +
+            '<span class="ui-range-origin-mark ui-range-origin-mark--high" style="left:' +
+            pcth.toFixed(2) +
+            '%" title="默认上界" aria-hidden="true"></span>' +
+            '</div>' +
+            '</div>' +
+            '<div class="ui-numeric-meta">' +
+            metaHint +
+            '</div>' +
+            '</div>'
+          );
+        }
+
+        var iv = String(f.value);
+        var defv = f.defaultValue;
+        var originPct = pctInSpan(defv, mn, mx);
+        return (
+          '<div class="ui-field-group ui-numeric-field ui-numeric-field--row" data-field-kind="single" data-min="' +
+          mn +
+          '" data-max="' +
+          mx +
+          '">' +
+          '<label class="ui-field-label" for="' +
+          lid +
+          '">' +
+          name +
+          '</label>' +
+          '<div class="ui-numeric-row">' +
+          '<input type="number" id="' +
+          lid +
+          '" class="ui-input-number js-input-numeric" data-field-id="' +
+          fid +
+          '" data-default-value="' +
+          escapeHtml(String(defv)) +
+          '" min="' +
+          mn +
+          '" max="' +
+          mx +
+          '" step="' +
+          st +
+          '" value="' +
+          escapeHtml(iv) +
+          '" inputmode="decimal" />' +
+          '<div class="ui-numeric-range-wrap">' +
+          '<input type="range" class="ui-input-range ui-input-range--numeric js-input-numeric-range" data-field-id="' +
+          fid +
+          '" min="' +
+          mn +
+          '" max="' +
+          mx +
+          '" step="' +
+          st +
+          '" value="' +
+          escapeHtml(iv) +
+          '" aria-label="' +
+          name +
+          '（滑杆）" />' +
+          '<span class="ui-range-origin-mark" style="left:' +
+          originPct.toFixed(2) +
+          '%" title="默认值位置" aria-hidden="true"></span>' +
+          '</div>' +
+          '</div>' +
+          '<div class="ui-numeric-meta">' +
+          metaHint +
+          '</div>' +
+          '</div>'
+        );
+      })
+      .join('');
+    updateNumericLabels(host, overlay);
+  }
+
+  function wireNumericOverlay(overlay) {
+    if (overlay.dataset.numericInputWired === '1') return;
+    overlay.dataset.numericInputWired = '1';
+
+    overlay.addEventListener('input', function (e) {
+      var t = e.target;
+      if (!t || !t.getAttribute || !t.classList) return;
+      if (
+        !t.classList.contains('js-input-numeric') &&
+        !t.classList.contains('js-input-numeric-range')
+      ) {
+        return;
+      }
+      var fid = t.getAttribute('data-field-id');
+      if (!fid) return;
+      var fields = overlay.querySelector('.js-numeric-fields');
+      if (!fields) return;
+      var row = t.closest('.ui-numeric-field--row');
+      var fk = row && row.getAttribute('data-field-kind');
+
+      if (fk === 'range') {
+        var R = findRangeElements(fields, fid);
+        if (!R.lowNum || !R.highNum || !R.lowRng || !R.highRng) return;
+        var mn = parseFloat(R.lowNum.getAttribute('min'), 10);
+        var mx = parseFloat(R.lowNum.getAttribute('max'), 10);
+        if (isNaN(mn)) mn = 0;
+        if (isNaN(mx)) mx = 100;
+        var part = t.getAttribute('data-range-part');
+        if (t === R.lowRng) {
+          R.lowNum.value = R.lowRng.value;
+        } else if (t === R.highRng) {
+          R.highNum.value = R.highRng.value;
+        } else if (t === R.lowNum) {
+          var nl = clampInRange(parseFloat(String(R.lowNum.value), 10), mn, mx);
+          R.lowNum.value = String(nl);
+          R.lowRng.value = R.lowNum.value;
+        } else if (t === R.highNum) {
+          var nh = clampInRange(parseFloat(String(R.highNum.value), 10), mn, mx);
+          R.highNum.value = String(nh);
+          R.highRng.value = R.highNum.value;
+        }
+        var low = clampInRange(parseFloat(String(R.lowNum.value), 10), mn, mx);
+        var high = clampInRange(parseFloat(String(R.highNum.value), 10), mn, mx);
+        if (low > high) {
+          if (part === 'low' || t === R.lowRng || t === R.lowNum) {
+            high = low;
+            R.highNum.value = String(high);
+            R.highRng.value = String(high);
+          } else {
+            low = high;
+            R.lowNum.value = String(low);
+            R.lowRng.value = String(low);
+          }
+        }
+        R.lowNum.value = String(low);
+        R.highNum.value = String(high);
+        R.lowRng.value = String(low);
+        R.highRng.value = String(high);
+        updateNumericLabels(fields, overlay);
+        return;
+      }
+
+      var pair = findNumericSingleElements(fields, fid);
+      var num = pair.num;
+      var rng = pair.rng;
+      if (!num || !rng) return;
+      mn = parseFloat(num.getAttribute('min'));
+      mx = parseFloat(num.getAttribute('max'));
+      if (isNaN(mn)) mn = 0;
+      if (isNaN(mx)) mx = 100;
+      if (t === rng) {
+        num.value = rng.value;
+      } else {
+        var n = clampInRange(parseFloat(String(num.value)), mn, mx);
+        rng.value = String(n);
+        num.value = rng.value;
+      }
+      updateNumericLabels(fields, overlay);
+    });
+
+    overlay.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('.js-numeric-reset');
+      if (!btn || !overlay.contains(btn)) return;
+      e.preventDefault();
+      var fields = overlay.querySelector('.js-numeric-fields');
+      if (!fields) return;
+      var nums = fields.querySelectorAll('.js-input-numeric');
+      Array.prototype.forEach.call(nums, function (num) {
+        var def = num.getAttribute('data-default-value');
+        var fid = num.getAttribute('data-field-id');
+        var part = num.getAttribute('data-range-part');
+        if (part === 'low') {
+          var RL = findRangeElements(fields, fid);
+          if (RL.lowRng && RL.lowNum) {
+            RL.lowNum.value = def;
+            RL.lowRng.value = def;
+          }
+        } else if (part === 'high') {
+          var RH = findRangeElements(fields, fid);
+          if (RH.highRng && RH.highNum) {
+            RH.highNum.value = def;
+            RH.highRng.value = def;
+          }
+        } else {
+          var pair2 = findNumericSingleElements(fields, fid);
+          if (pair2.rng && pair2.num) {
+            pair2.num.value = def;
+            pair2.rng.value = def;
+          }
+        }
+      });
+      var seenRangeFid = {};
+      Array.prototype.forEach.call(
+        fields.querySelectorAll('.ui-numeric-field--row[data-field-kind="range"]'),
+        function (row) {
+          var lo = row.querySelector('.js-input-numeric[data-range-part="low"]');
+          if (!lo) return;
+          var rfid = lo.getAttribute('data-field-id');
+          if (rfid && !seenRangeFid[rfid]) {
+            seenRangeFid[rfid] = true;
+            syncRangeInputs(fields, rfid);
+          }
+        }
+      );
+      updateNumericLabels(fields, overlay);
+    });
+  }
+
+  function openList(id, rows, headers, callbacks) {
+    callbacks = mergeCallbacks(
+      mergeCallbacks(defaultBaseCallbacks(), {
+        onRowClick: noop,
+        onHeaderClick: noop
+      }),
+      callbacks || {}
+    );
+
+    var existing = DS.get(id);
+    if (existing && existing.kind === 'list') {
+      DS.bringToTop(id);
+      existing.callbacks = callbacks;
+      renderList(existing.el, rows, headers, callbacks);
+      syncToolbarButtonsFromCallbacks(existing.el, callbacks);
+      showOverlay(existing.el);
+      var lb0 = existing.el.querySelector('.list-body');
+      if (lb0) lb0.scrollTop = 0;
+      attachListBodyScroll(existing.el);
+      initListGlobalListenersOnce();
+      return;
+    }
+
+    var el = resolveOverlayElement('list');
+    el.setAttribute('data-dialog-id', id);
+    DS.push({ id: id, kind: 'list', el: el, callbacks: callbacks });
+    renderList(el, rows, headers, callbacks);
+    syncToolbarButtonsFromCallbacks(el, callbacks);
+    showOverlay(el);
+    var lb = el.querySelector('.list-body');
+    if (lb) lb.scrollTop = 0;
+    attachListBodyScroll(el);
+    initListGlobalListenersOnce();
+  }
+
+  function hydrateMsg(overlay, title, html) {
+    var titleEl = overlay.querySelector('.js-detail-title');
+    var box = overlay.querySelector('.js-detail-html');
+    var t = title === undefined || title === null ? D.detailTitleDefault : title;
+    var h = html === undefined || html === null ? D.detailHtmlDefault : html;
+    if (titleEl) titleEl.textContent = t;
+    if (box) box.innerHTML = h;
+  }
+
+  function openMsg(id, title, html, callbacks) {
+    callbacks = mergeCallbacks(defaultBaseCallbacks(), callbacks || {});
+
+    var existing = DS.get(id);
+    if (existing && existing.kind === 'msg') {
+      DS.bringToTop(id);
+      existing.callbacks = callbacks;
+      hydrateMsg(existing.el, title, html);
+      syncToolbarButtonsFromCallbacks(existing.el, callbacks);
+      showOverlay(existing.el);
+      return;
+    }
+
+    var el = resolveOverlayElement('msg');
+    el.setAttribute('data-dialog-id', id);
+    DS.push({ id: id, kind: 'msg', el: el, callbacks: callbacks });
+    hydrateMsg(el, title, html);
+    syncToolbarButtonsFromCallbacks(el, callbacks);
+    showOverlay(el);
+  }
+
+  function openReport(id, rows, seriesA, seriesB, xAxisStart, xAxisEnd, callbacks) {
+    callbacks = mergeCallbacks(
+      mergeCallbacks(defaultBaseCallbacks(), {
+        onReportRowAction: noop
+      }),
+      callbacks || {}
+    );
+
+    var rRows = rows === undefined || rows === null ? D.reportRows : rows;
+    var sa = seriesA === undefined || seriesA === null ? D.reportSeriesA : seriesA;
+    var sb = seriesB === undefined || seriesB === null ? D.reportSeriesB : seriesB;
+    var xa =
+      xAxisStart === undefined || xAxisStart === null ? D.reportXAxisStart : xAxisStart;
+    var xe = xAxisEnd === undefined || xAxisEnd === null ? D.reportXAxisEnd : xAxisEnd;
+
+    var existing = DS.get(id);
+    if (existing && existing.kind === 'report') {
+      DS.bringToTop(id);
+      existing.callbacks = callbacks;
+      renderReportRows(existing.el, rRows, callbacks);
+      drawReportChart(existing.el, sa, sb, xa, xe);
+      syncToolbarButtonsFromCallbacks(existing.el, callbacks);
+      showOverlay(existing.el);
+      return;
+    }
+
+    var el = resolveOverlayElement('report');
+    el.setAttribute('data-dialog-id', id);
+    DS.push({ id: id, kind: 'report', el: el, callbacks: callbacks });
+    renderReportRows(el, rRows, callbacks);
+    drawReportChart(el, sa, sb, xa, xe);
+    syncToolbarButtonsFromCallbacks(el, callbacks);
+    showOverlay(el);
+  }
+
+  function openConfig(id, rows, callbacks) {
+    callbacks = mergeCallbacks(
+      mergeCallbacks(defaultBaseCallbacks(), {
+        onConfigItem: noop
+      }),
+      callbacks || {}
+    );
+
+    var cfgRows = rows === undefined || rows === null ? D.cfgRows : rows;
+
+    var existing = DS.get(id);
+    if (existing && existing.kind === 'config') {
+      DS.bringToTop(id);
+      existing.callbacks = callbacks;
+      renderConfig(existing.el, cfgRows, callbacks);
+      syncToolbarButtonsFromCallbacks(existing.el, callbacks);
+      showOverlay(existing.el);
+      var body = existing.el.querySelector('.config-body');
+      if (body) body.scrollTop = 0;
+      return;
+    }
+
+    var el = resolveOverlayElement('config');
+    el.setAttribute('data-dialog-id', id);
+    DS.push({ id: id, kind: 'config', el: el, callbacks: callbacks });
+    renderConfig(el, cfgRows, callbacks);
+    syncToolbarButtonsFromCallbacks(el, callbacks);
+    showOverlay(el);
+    var cfgBody = el.querySelector('.config-body');
+    if (cfgBody) cfgBody.scrollTop = 0;
+  }
+
+  /**
+   * 数值输入：多字段模式 `openNumeric(id, fields[], callbacks)`，每项含 id、name、value、min、max、step；
+   * 兼容旧版 `openNumeric(id, value, min, max, callbacks)` 单字段（id 为「value」）。
+   */
+  function openNumeric(id, arg2, arg3, arg4, arg5) {
+    var userCallbacks = {};
+    var fieldsNorm = [];
+
+    if (Array.isArray(arg2)) {
+      userCallbacks = arg3 || {};
+      if (!arg2.length) {
+        fieldsNorm = [normalizeNumericField({}, 0)];
+      } else {
+        fieldsNorm = arg2.map(function (f, i) {
+          return normalizeNumericField(f, i);
+        });
+      }
+    } else {
+      userCallbacks = (arg5 !== undefined && arg5 !== null ? arg5 : {}) || {};
+      fieldsNorm = [
+        normalizeNumericField(
+          {
+            id: 'value',
+            name: '当前数值',
+            value: arg2,
+            min: arg3,
+            max: arg4
+          },
+          0
+        )
+      ];
+    }
+
+    var callbacks = mergeCallbacks(defaultBaseCallbacks(), userCallbacks);
+    var numericRenderers = buildNumericRenderers(fieldsNorm);
+
+    var existing = DS.get(id);
+    if (existing && existing.kind === 'numeric') {
+      DS.bringToTop(id);
+      existing.callbacks = callbacks;
+      existing.numericRenderers = numericRenderers;
+      renderNumericFields(existing.el, fieldsNorm);
+      wireNumericOverlay(existing.el);
+      syncToolbarButtonsFromCallbacks(existing.el, callbacks);
+      showOverlay(existing.el);
+      return;
+    }
+
+    var el = resolveOverlayElement('numeric');
+    el.setAttribute('data-dialog-id', id);
+    DS.push({
+      id: id,
+      kind: 'numeric',
+      el: el,
+      callbacks: callbacks,
+      numericRenderers: numericRenderers
+    });
+    renderNumericFields(el, fieldsNorm);
+    wireNumericOverlay(el);
+    syncToolbarButtonsFromCallbacks(el, callbacks);
+    showOverlay(el);
+  }
+
+  function openTextInput(id, text, callbacks) {
+    callbacks = mergeCallbacks(defaultBaseCallbacks(), callbacks || {});
+
+    var txt = text === undefined || text === null ? '' : String(text);
+
+    var existing = DS.get(id);
+    if (existing && existing.kind === 'textInput') {
+      DS.bringToTop(id);
+      existing.callbacks = callbacks;
+      var ta0 = existing.el.querySelector('.js-input-text');
+      if (ta0) {
+        ta0.value = txt;
+        ta0.focus();
+      }
+      syncToolbarButtonsFromCallbacks(existing.el, callbacks);
+      showOverlay(existing.el);
+      return;
+    }
+
+    var el = resolveOverlayElement('textInput');
+    el.setAttribute('data-dialog-id', id);
+    DS.push({ id: id, kind: 'textInput', el: el, callbacks: callbacks });
+    var ta = el.querySelector('.js-input-text');
+    if (ta) {
+      ta.value = txt;
+      ta.focus();
+    }
+    syncToolbarButtonsFromCallbacks(el, callbacks);
+    showOverlay(el);
+  }
+
+  function unmount(dialogId) {
+    var entry = DS.remove(dialogId);
+    if (!entry) return;
+    var kind = entry.kind;
+    var el = entry.el;
+    if (kind === 'list') closeListHeaderFloatsFor(el);
+
+    if (el.getAttribute('data-dialog-clone') === '1') {
+      if (el.parentNode) el.remove();
+    } else {
+      hideOverlay(el);
+    }
+    el.removeAttribute('data-dialog-id');
+  }
+
+  function close(dialogId) {
+    var entry = DS.get(dialogId);
+    if (!entry) return;
+    getCb(entry, 'onClose')({ id: dialogId, kind: entry.kind });
+    unmount(dialogId);
+  }
+
+  function cancelFromUser(dialogId) {
+    var entry = DS.get(dialogId);
+    if (!entry) return;
+    getCb(entry, 'onCancel')({ id: dialogId, kind: entry.kind });
+    unmount(dialogId);
+  }
+
+  function confirmFromUser(dialogId) {
+    var entry = DS.get(dialogId);
+    if (!entry) return;
+    var kind = entry.kind;
+    var el = entry.el;
+    var cbs = entry.callbacks || {};
+
+    if (kind === 'msg') {
+      var box = el.querySelector('.js-detail-html');
+      var titleEl = el.querySelector('.js-detail-title');
+      if (typeof cbs.onConfirm === 'function') {
+        cbs.onConfirm({
+          id: dialogId,
+          kind: kind,
+          title: titleEl ? titleEl.textContent : '',
+          html: box ? box.innerHTML : ''
+        });
+      }
+    } else if (kind === 'numeric') {
+      var body = el.querySelector('.js-numeric-fields');
+      var values = {};
+      if (body) {
+        var inps = body.querySelectorAll('.js-input-numeric');
+        Array.prototype.forEach.call(inps, function (inp) {
+          var fid = inp.getAttribute('data-field-id');
+          if (!fid) return;
+          var n = parseFloat(String(inp.value), 10);
+          if (isNaN(n)) n = 0;
+          var part = inp.getAttribute('data-range-part');
+          if (part === 'low') {
+            if (!values[fid] || typeof values[fid] !== 'object') {
+              values[fid] = {};
+            }
+            values[fid].low = n;
+          } else if (part === 'high') {
+            if (!values[fid] || typeof values[fid] !== 'object') {
+              values[fid] = {};
+            }
+            values[fid].high = n;
+          } else {
+            values[fid] = n;
+          }
+        });
+      }
+      if (typeof cbs.onConfirm === 'function') {
+        var payload = { id: dialogId, kind: kind, values: values };
+        if (
+          Object.keys(values).length === 1 &&
+          Object.prototype.hasOwnProperty.call(values, 'value')
+        ) {
+          payload.value = String(values.value);
+        }
+        cbs.onConfirm(payload);
+      }
+    } else if (kind === 'textInput') {
+      var ta = el.querySelector('.js-input-text');
+      var t = ta ? ta.value : '';
+      if (typeof cbs.onConfirm === 'function') {
+        cbs.onConfirm({ id: dialogId, kind: kind, text: t });
+      }
+    } else {
+      if (typeof cbs.onConfirm === 'function') {
+        cbs.onConfirm({ id: dialogId, kind: kind });
+      }
+    }
+    unmount(dialogId);
+  }
+
+  var globalUiBound = false;
+  function bindGlobalUiOnce() {
+    if (globalUiBound) return;
+    globalUiBound = true;
+
+    document.addEventListener('click', function (e) {
+      var tbar = e.target.closest('.js-dialog-toolbar');
+      if (tbar) {
+        var overlay = tbar.closest('.dialog-overlay[data-dialog-id]');
+        if (overlay) {
+          var dialogId = overlay.getAttribute('data-dialog-id');
+          var entry = getEntry(dialogId);
+          if (entry) {
+            var which = tbar.getAttribute('data-toolbar');
+            var map = {
+              left: 'onToolbarLeft',
+              right: 'onToolbarRight',
+              filter: 'onToolbarFilter',
+              config: 'onToolbarConfig'
+            };
+            var key = map[which];
+            var fn = entry.callbacks && key ? entry.callbacks[key] : null;
+            if (typeof fn === 'function') {
+              fn({ id: dialogId, kind: entry.kind });
+            }
+          }
+        }
+        e.stopPropagation();
+        return;
+      }
+
+      var closeBtn = e.target.closest(
+        '.dialog-overlay[data-dialog-id] .btn-icon-header.btn-close'
+      );
+      if (closeBtn) {
+        var overlay = closeBtn.closest('.dialog-overlay[data-dialog-id]');
+        if (overlay) {
+          var dialogId = overlay.getAttribute('data-dialog-id');
+          if (dialogId) close(dialogId);
+        }
+        return;
+      }
+
+      var cancelBtn = e.target.closest(
+        '.dialog-overlay[data-dialog-id] .js-dialog-cancel'
+      );
+      if (cancelBtn) {
+        var ov = cancelBtn.closest('.dialog-overlay[data-dialog-id]');
+        if (ov) {
+          var id2 = ov.getAttribute('data-dialog-id');
+          if (id2) cancelFromUser(id2);
+        }
+        return;
+      }
+
+      var okBtn = e.target.closest(
+        '.dialog-overlay[data-dialog-id] .js-dialog-ok'
+      );
+      if (okBtn) {
+        var ovv = okBtn.closest('.dialog-overlay[data-dialog-id]');
+        if (ovv) {
+          var id3 = ovv.getAttribute('data-dialog-id');
+          if (id3) confirmFromUser(id3);
+        }
+      }
+    });
+  }
+  bindGlobalUiOnce();
+
+  window.Dialogs = {
+    openList: openList,
+    openMsg: openMsg,
+    openReport: openReport,
+    updateReportChart: updateReportChart,
+    openConfig: openConfig,
+    openNumeric: openNumeric,
+    openTextInput: openTextInput,
+    close: close
+  };
+})();
+
+/**
+ * 仅用于本页的演示：绑定列表/弹层入口按钮，与 Dialogs 库解耦。
+ * 依赖：dialogDemoData.js、dialogStack.js、dialogs.js（先于本文件加载）
+ */
+(function () {
+  var D = window.DialogDemoData;
+
+  function headerLabel(h) {
+    if (!h) return '';
+    if (h.header != null) return String(h.header);
+    if (h.label != null) return String(h.label);
+    return '';
+  }
+
+  function wireDialogDemos() {
+    if (!window.Dialogs || !D) {
+      console.warn('dialogDemo.js：需要 Dialogs 与 DialogDemoData');
+      return;
+    }
+
+    var btnOpen = document.getElementById('btnOpenList');
+    if (btnOpen) {
+      btnOpen.addEventListener('click', function () {
+        Dialogs.openList('list-main', undefined, undefined, {
+          // 标题栏四个工具按钮：传了哪个回调，就出现哪个按钮（关闭 × 始终有）
+          onToolbarLeft: function (ev) {
+            console.log('[demo] 列表工具栏：向左', ev);
+            alert('列表工具栏：向左\nid=' + ev.id + ' kind=' + ev.kind);
+          },
+          onToolbarRight: function (ev) {
+            console.log('[demo] 列表工具栏：向右', ev);
+            alert('列表工具栏：向右');
+          },
+          onToolbarFilter: function (ev) {
+            console.log('[demo] 列表工具栏：过滤', ev);
+            alert('列表工具栏：过滤');
+          },
+          onToolbarConfig: function (ev) {
+            console.log('[demo] 列表工具栏：配置', ev);
+            alert('列表工具栏：配置');
+          },
+          onRowClick: function (ev) {
+            var vals = ev.row && ev.row.values ? ev.row.values : [];
+            var headers = D.listHeadersDemo();
+            var lines = [];
+            for (var i = 0; i < Math.min(vals.length, headers.length); i++) {
+              lines.push(headerLabel(headers[i]) + '：' + vals[i]);
+            }
+            alert('行数据：\n' + lines.join('\n'));
+          },
+          onHeaderClick: function (ev) {
+            // 中间三列：名称、类型、状态（col 1,2,3），与旧版 demo 一致
+            if (ev.col >= 1 && ev.col <= 3) {
+              alert('表头：「' + ev.header + '」');
+            }
+          }
+        });
+      });
+    }
+
+    var btnDetailDemo = document.getElementById('btnOpenDetailDemo');
+    if (btnDetailDemo) {
+      btnDetailDemo.addEventListener('click', function () {
+        Dialogs.openMsg('msg-demo', undefined, undefined, {
+          onConfirm: function (ev) {
+            console.log('[demo] 信息确定', ev);
+          }
+        });
+      });
+    }
+
+    var btnReportDemo = document.getElementById('btnOpenReportDemo');
+    if (btnReportDemo) {
+      btnReportDemo.addEventListener('click', function () {
+        Dialogs.openReport(
+          'report-demo',
+          undefined,
+          undefined,
+          undefined,
+          D.reportXAxisStart,
+          D.reportXAxisEnd,
+          {
+            onReportRowAction: function (ev) {
+              console.log('[demo] 报表行', ev.id, ev.row);
+            }
+          }
+        );
+      });
+    }
+
+    var btnNumericDemo = document.getElementById('btnOpenNumericDemo');
+    if (btnNumericDemo) {
+      btnNumericDemo.addEventListener('click', function () {
+        Dialogs.openNumeric('numeric-demo', D.numericFieldsDemo(), {
+          onConfirm: function (ev) {
+            console.log('[demo] 数值', ev.values, ev.value);
+          }
+        });
+      });
+    }
+
+    var btnTextDemo = document.getElementById('btnOpenTextDemo');
+    if (btnTextDemo) {
+      btnTextDemo.addEventListener('click', function () {
+        Dialogs.openTextInput('text-demo', undefined, {
+          onConfirm: function (ev) {
+            console.log('[demo] 文本长度', (ev.text || '').length);
+          }
+        });
+      });
+    }
+
+    var btnOpenConfig = document.getElementById('btnOpenConfig');
+    if (btnOpenConfig) {
+      btnOpenConfig.addEventListener('click', function () {
+        Dialogs.openConfig('config-main', undefined, {
+          onConfigItem: function (ev) {
+            console.log('[demo] 配置项', ev.id, ev.item);
+          }
+        });
+      });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireDialogDemos);
+  } else {
+    wireDialogDemos();
+  }
+})();
+
+
+  </script>
+</body>
+</html>
